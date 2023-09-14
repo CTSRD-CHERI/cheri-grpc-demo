@@ -14,6 +14,9 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -Xclang -morello-bounded-memargs=call
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -Xclang -morello-bounded-memargs=caller-only")
 set(C18N_LINK_CFLAGS "-Wl,--dynamic-linker=/libexec/ld-elf-c18n.so.1")
 
+# Policy spec
+add_library(policy SHARED "policy.c")
+
 # Simple ping-pong test
 
 set(proto_srcs "${CMAKE_CURRENT_BINARY_DIR}/test.pb.cc")
