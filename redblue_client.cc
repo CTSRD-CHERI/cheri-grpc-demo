@@ -35,8 +35,11 @@
 #include <string>
 #include <grpcpp/grpcpp.h>
 
-#include "redblue.grpc.pb.h"
-#include "redblue.pb.h"
+#include "red.pb.h"
+#include "red.grpc.pb.h"
+#include "blue.pb.h"
+#include "blue.grpc.pb.h"
+
 
 
 using grpc::ClientContext;
@@ -55,13 +58,13 @@ class RedBlueClient {
       : red_stub_(RedService::NewStub(channel)),
         blue_stub_(BlueService::NewStub(channel)) {}
 
-  int SendRO(int value) {
+  int SendToRed(int value) {
     RedReq req;
     RedRes res;
     ClientContext context;
 
     req.set_value(value);
-    Status status = red_stub_->ReadonlyAPI(&context, req, &res);
+    Status status = red_stub_->RedPingPong(&context, req, &res);
 
     if (status.ok()) {
       return res.value();
@@ -70,13 +73,13 @@ class RedBlueClient {
     }
   }
 
-  int SendRW(int value) {
+  int SendToBlue(int value) {
     BlueReq req;
     BlueRes res;
     ClientContext context;
 
     req.set_value(value);
-    Status status = blue_stub_->ReadWriteAPI(&context, req, &res);
+    Status status = blue_stub_->BluePingPong(&context, req, &res);
 
     if (status.ok()) {
       return res.value();
@@ -96,9 +99,9 @@ int main(int argc, char* argv[]) {
   RedBlueClient client(grpc::CreateChannel(server_addr, grpc::InsecureChannelCredentials()));
 
   for (int i = 0; i < 100; i++) {
-    int r_value = client.SendRO(i);
+    int r_value = client.SendToRed(i);
     std::cout << "Red " << i << " Responds" << r_value << std::endl;
-    int b_value = client.SendRW(i);
+    int b_value = client.SendToBlue(i);
     std::cout << "Blue " << i << " Responds" << b_value << std::endl;
   }
 

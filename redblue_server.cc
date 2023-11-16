@@ -34,7 +34,8 @@
 #include <memory>
 #include <string>
 
-#include "redblue.h"
+#include "red.h"
+#include "blue.h"
 
 using grpc::Server;
 using grpc::ServerBuilder;

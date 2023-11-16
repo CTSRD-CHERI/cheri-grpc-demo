@@ -30,12 +30,18 @@
  * SUCH DAMAGE.
  */
 
-#include "blue.h"
+syntax = "proto3";
 
-Status
-BlueServiceImpl::BluePingPong(ServerContext* context, const BlueReq* request, BlueRes* reply) {
-  reply->set_value(request->value() + 1);
-  return Status::OK;
+package cheri_demo;
+
+message BlueReq {
+  int32 value = 1;
 }
 
+message BlueRes {
+  int32 value = 1;
+}
 
+service BlueService {
+  rpc BluePingPong(BlueReq) returns (BlueRes) {}
+}

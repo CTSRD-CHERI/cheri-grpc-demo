@@ -30,11 +30,11 @@
  * SUCH DAMAGE.
  */
 
-#include "redblue.h"
+#include "red.h"
 
 
 Status
-RedServiceImpl::ReadonlyAPI(ServerContext* context, const RedReq* request, RedRes* reply) {
+RedServiceImpl::RedPingPong(ServerContext* context, const RedReq* request, RedRes* reply) {
   reply->set_value(request->value() + 1);
   return Status::OK;
 }

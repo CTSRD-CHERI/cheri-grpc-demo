@@ -9,19 +9,9 @@ struct compart {
    */
   const char *name;
   /*
-   * List of compartment's per-thread stacks
-   */
-  struct Struct_Stack_Entry *_Atomic stacks;
-  /*
    * NULL-terminated array of libraries that belong to the compartment
    */
   const char **libraries;
-  /*
-   * NULL-terminated array of symbols governed by the compartment's policy
-   */
-  const char **symbols;
-  _Bool trust : 1;
-  _Bool negative : 1;
 };
 
 struct policy {
@@ -37,7 +27,6 @@ struct policy {
  * libaddress_sorting.so.26
  * libre2.so.9
  * libupb.so.26
- * libgpr.so.26
  * libm.so.5
  * librt.so.1
  * libprotobuf.so.31
@@ -47,25 +36,26 @@ struct policy {
 
 static struct compart policy_compartments[] = {
   {
-    .name = "grpc libraries",
+    .name = "grpc-libs",
     .libraries = (const char *[]) {
       "libgrpc++_reflection.so.1.48",
       "libgrpc++.so.1.48",
       "libgrpc.so.26",
+      "libgpr.so.26",
       NULL
     }
   }, {
-    .name = "system libraries",
+    .name = "system-libs",
     .libraries = (const char *[]) {
-      "libthr.so.3",
       "libc++.so.1",
       "libcxxrt.so.1",
       "libgcc_s.so.1",
       "libc.so.7",
+      "libthr.so.3",
       NULL
     }
   }, {
-    .name = "abseil libraries",
+    .name = "abseil-libs",
     .libraries = (const char *[]) {
       "libabsl_raw_hash_set.so.2206.0.0",
       "libabsl_hashtablez_sampler.so.2206.0.0",
@@ -125,7 +115,7 @@ static struct compart policy_compartments[] = {
       NULL
     }
   }, {
-    .name = "crypto libraries",
+    .name = "crypto-libs",
     .libraries = (const char *[]) {
       "libssl.so.111",
       "libcrypto.so.111",

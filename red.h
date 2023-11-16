@@ -30,12 +30,19 @@
  * SUCH DAMAGE.
  */
 
-#include "blue.h"
+#pragma once
 
-Status
-BlueServiceImpl::BluePingPong(ServerContext* context, const BlueReq* request, BlueRes* reply) {
-  reply->set_value(request->value() + 1);
-  return Status::OK;
-}
+#include <grpcpp/grpcpp.h>
 
+#include "red.grpc.pb.h"
+#include "red.pb.h"
 
+using grpc::ServerContext;
+using grpc::Status;
+using cheri_demo::RedService;
+using cheri_demo::RedReq;
+using cheri_demo::RedRes;
+
+class RedServiceImpl final : public RedService::Service {
+  Status RedPingPong(ServerContext* context, const RedReq* request, RedRes* reply) override;
+};

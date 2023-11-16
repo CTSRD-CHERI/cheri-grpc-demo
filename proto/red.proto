@@ -30,26 +30,19 @@
  * SUCH DAMAGE.
  */
 
-#pragma once
+syntax = "proto3";
 
-#include <grpcpp/grpcpp.h>
+package cheri_demo;
 
-#include "redblue.grpc.pb.h"
-#include "redblue.pb.h"
+message RedReq {
+  int32 value = 1;
+}
 
-using grpc::ServerContext;
-using grpc::Status;
-using cheri_demo::RedService;
-using cheri_demo::RedReq;
-using cheri_demo::RedRes;
-using cheri_demo::BlueService;
-using cheri_demo::BlueReq;
-using cheri_demo::BlueRes;
+message RedRes {
+  int32 value = 1;
+}
 
-class BlueServiceImpl final : public BlueService::Service {
-  Status ReadWriteAPI(ServerContext* context, const BlueReq* request, BlueRes* reply) override;
-};
+service RedService {
+  rpc RedPingPong(RedReq) returns (RedRes) {}
+}
 
-class RedServiceImpl final : public RedService::Service {
-  Status ReadonlyAPI(ServerContext* context, const RedReq* request, RedRes* reply) override;
-};

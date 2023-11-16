@@ -30,12 +30,19 @@
  * SUCH DAMAGE.
  */
 
-#include "blue.h"
+#pragma once
 
-Status
-BlueServiceImpl::BluePingPong(ServerContext* context, const BlueReq* request, BlueRes* reply) {
-  reply->set_value(request->value() + 1);
-  return Status::OK;
-}
+#include <grpcpp/grpcpp.h>
 
+#include "blue.grpc.pb.h"
+#include "blue.pb.h"
 
+using grpc::ServerContext;
+using grpc::Status;
+using cheri_demo::BlueService;
+using cheri_demo::BlueReq;
+using cheri_demo::BlueRes;
+
+class BlueServiceImpl final : public BlueService::Service {
+  Status BluePingPong(ServerContext* context, const BlueReq* request, BlueRes* reply) override;
+};
