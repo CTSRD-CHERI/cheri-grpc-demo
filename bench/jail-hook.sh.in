@@ -8,11 +8,13 @@ event="${1}"
 case "${event}" in
 mount)
 	mntpath="${2}"
+    respath="${BENCHMARK_RESULT_PATH}/${JAILNAME}-${PTNAME}-${SETNAME}"
 
+    mkdir -p "${respath}"
     echo "Mounting QPS benchmark directories"
 	# Mount benchmark directories.
     mkdir -p "${mntpath}/root/results" "${mntpath}/root/qps"
-    mount -r -t nullfs -o rw "${BENCHMARK_RESULT_PATH}" "${mntpath}/root/results"
+    mount -r -t nullfs -o rw "${respath}" "${mntpath}/root/results"
     mount -r -t nullfs -o ro "${BENCHMARK_SCRIPTS_PATH}" "${mntpath}/root/qps"
 	;;
 start)
