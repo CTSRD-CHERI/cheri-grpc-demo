@@ -13,16 +13,15 @@ ROOTFS_DIR=
 POUDRIERE_CONF=/usr/local/etc/poudriere.d
 QPS_DEMO=$(readlink -f $(dirname "$0"))
 
-OPTSTRING=":w:p:P:nx:r:"
+OPTSTRING=":w:p:P:nx:r:c"
 X=
 STEP=
+POUDRIERE_CLEAN=
 
-#ABIS=(hybrid purecap benchmark)
-ABIS=(purecap)
+ABIS=(hybrid purecap benchmark)
 #VARIANTS=(base stackinit)
 VARIANTS=(base)
-#RUNTIMES=(base c18n revoke)
-RUNTIMES=(base)
+RUNTIMES=(base c18n revoke)
 
 function usage()
 {
@@ -35,6 +34,7 @@ function usage()
     echo -e "\t-P\tPath to the ports tree, default ${PORTS_PATH}"
     echo -e "\t-n\tPretend run, print the commands without doing anything"
     echo -e "\t-x\tExecute given step, valid values are {setup, qps}"
+    echo -e "\t-c\tClean the grpc-qps package in jails build but not dependencies"
     exit 1
 }
 
@@ -63,6 +63,9 @@ while getopts ${OPTSTRING} opt; do
             ;;
         x)
             STEP=${OPTARG}
+            ;;
+        c)
+            POUDRIERE_CLEAN="-C"
             ;;
         :)
             echo "Option -${OPTARG} requires an argument"
@@ -120,7 +123,7 @@ function abi_to_port_set()
 # $3 => runtime
 function jailname()
 {
-    echo "${JAIL_PREFIX}${1}-${2}-${3}"
+    echo "${JAIL_PREFIX}${1}-${2}"
 }
 
 # Wipe all jails we created as well as the ports tree
@@ -171,14 +174,15 @@ function mkjail()
 # $1 => jail abi
 # $2 => jail variant
 # $3 => jail runtime configuration
-function buildjail()
+function buildpkg()
 {
     port_set=$(abi_to_port_set ${1})
     if [ "${2}" = "stackinit" ]; then
         port_set="${port_set}_stackzero"
     fi
     name="$(jailname ${1} ${2} ${3})"
-    ${X} poudriere bulk -j "${name}" -p "${PORTS_NAME}" -z "${port_set}" benchmarks/grpc-qps
+    ${X} poudriere bulk -j "${name}" -p "${PORTS_NAME}" -z "${port_set}" \
+         "${POUDRIERE_CLEAN}" benchmarks/grpc-qps
 }
 
 # $1 => jail abi
@@ -188,10 +192,15 @@ function buildjail()
 # mount the correct output directory at /root/results in the jail
 function ensure_result_dirs()
 {
-    name="${JAIL_PREFIX}${1}-${2}-${3}"
-    ${X} mkdir -p "${WORKSPACE}/results/${name}"
+    abi=${1}
+    variant=${2}
+    rt=${3}
+
+    name="${JAIL_PREFIX}${abi}-${variant}"
+    ${X} mkdir -p "${WORKSPACE}/results/${name}/${rt}"
 }
 
+# Determine whether the tuple (abi, variant, runtime) is valid
 # $1 => jail abi
 # $2 => jail variant
 # $3 => jail runtime config
@@ -220,12 +229,7 @@ function setup()
 
     for abi in ${ABIS[@]}; do
         for variant in ${VARIANTS[@]}; do
-            for rt in ${RUNTIMES[@]}; do
-                if valid_combination ${abi} ${variant} ${rt}; then
-                    continue
-                fi
-                mkjail ${abi} ${variant} ${rt}
-            done
+            mkjail ${abi} ${variant}
         done
     done
 
@@ -233,12 +237,7 @@ function setup()
     echo "Start building packages"
     for abi in ${ABIS[@]}; do
         for variant in ${VARIANTS[@]}; do
-            for rt in ${RUNTIMES[@]}; do
-                if valid_combination ${abi} ${variant} ${rt}; then
-                    continue
-                fi
-                buildjail ${abi} ${variant} ${rt}
-            done
+            buildpkg ${abi} ${variant}
         done
     done
 
@@ -289,11 +288,18 @@ function run_qps_jail()
 # Run the QPS benchmark across all jails
 function run_qps()
 {
-    # Save the default revocation state
     revoke_ctl=$(sysctl -n security.cheri.runtime_revocation_default)
     if [ "${revoke_ctl}" == "1" ]; then
         echo "Default revocation is enabled, switch it off for the benchmark"
         ${X} sysctl security.cheri.runtime_revocation_default=0
+    fi
+
+    if [ -z "${QPS_SKIP_KERNEL_CHECK}" ]; then
+        nodebug=$(uname -a | grep NODEBUG)
+        if [ -z "${nodebug}" ]; then
+            echo "WARNING: Refusing to run on non-benchmark kernel, set the QPS_SKIP_KERNEL_CHECK env var to override"
+            exit 1
+        fi
     fi
 
     echo "Run QPS benchmarks"

@@ -8,7 +8,7 @@ event="${1}"
 case "${event}" in
 mount)
 	mntpath="${2}"
-    respath="${BENCHMARK_RESULT_PATH}/${JAILNAME}-${PTNAME}-${SETNAME}"
+    respath="${BENCHMARK_RESULT_PATH}/${JAILNAME}"
 
     mkdir -p "${respath}"
     echo "Mounting QPS benchmark directories"

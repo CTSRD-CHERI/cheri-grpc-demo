@@ -80,11 +80,34 @@ case "${QPS_PACKAGE_ABI}" in
 esac
 
 QPS_SCENARIOS="${PREFIX}/share/grpc-qps/scenarios"
-QPS_RESULTS_DIR=/root/results
+QPS_RESULTS_DIR="/root/results/${QPS_EXPERIMENT}"
 
 QPS_SCENARIO_PREFIX=scenario_dump_cpp_
-QPS_SCENARIO_LIST=(protobuf_async_streaming_qps_unconstrained_insecure)
-QPS_ITERATIONS=1
+QPS_SCENARIO_LIST=(protobuf_sync_streaming_qps_unconstrained_secure \
+                   protobuf_sync_streaming_qps_unconstrained_secure_1073741824b \
+                   protobuf_sync_streaming_qps_unconstrained_secure_134217728b \
+                   protobuf_sync_streaming_qps_unconstrained_secure_16777216b \
+                   protobuf_sync_streaming_qps_unconstrained_secure_2097152b \
+                   protobuf_sync_streaming_qps_unconstrained_secure_262144b \
+                   protobuf_sync_streaming_qps_unconstrained_secure_32768b \
+                   protobuf_sync_streaming_qps_unconstrained_secure_4096b \
+                   protobuf_sync_streaming_qps_unconstrained_secure_512b \
+                   protobuf_sync_streaming_qps_unconstrained_secure_64b \
+                   protobuf_sync_streaming_qps_unconstrained_secure_8b \
+                   protobuf_sync_streaming_qps_unconstrained_secure_1b \
+                   protobuf_sync_streaming_qps_unconstrained_insecure \
+                   protobuf_sync_streaming_qps_unconstrained_insecure_1073741824b \
+                   protobuf_sync_streaming_qps_unconstrained_insecure_134217728b \
+                   protobuf_sync_streaming_qps_unconstrained_insecure_16777216b \
+                   protobuf_sync_streaming_qps_unconstrained_insecure_2097152b \
+                   protobuf_sync_streaming_qps_unconstrained_insecure_262144b \
+                   protobuf_sync_streaming_qps_unconstrained_insecure_32768b \
+                   protobuf_sync_streaming_qps_unconstrained_insecure_4096b \
+                   protobuf_sync_streaming_qps_unconstrained_insecure_512b \
+                   protobuf_sync_streaming_qps_unconstrained_insecure_64b \
+                   protobuf_sync_streaming_qps_unconstrained_insecure_8b \
+                   protobuf_sync_streaming_qps_unconstrained_insecure_1b)
+QPS_ITERATIONS=10
 
 
 echo "QPS_ITERATIONS:   ${QPS_ITERATIONS}"
@@ -120,6 +143,8 @@ case "${QPS_EXPERIMENT}" in
         echo "ERROR: invalid -r option, must be {base, c18n, revoke}"
         exit 1
 esac
+
+${X} mkdir -p ${QPS_RESULTS_DIR}
 
 echo  "Dump binary ELF control note:"
 ${X} elfctl -l "${PREFIX}/bin/grpc_qps_worker"
