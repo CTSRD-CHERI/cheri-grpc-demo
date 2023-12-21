@@ -125,7 +125,9 @@ case "${QPS_SCENARIO_GROUP}" in
         ;;
     sync_pp)
         QPS_SCENARIO_LIST=(protobuf_sync_streaming_ping_pong_insecure \
-            protobu_sync_streaming_ping_pong_secure)
+            protobuf_sync_streaming_ping_pong_secure \
+            protobuf_sync_unary_ping_pong_insecure \
+            protobuf_sync_unary_ping_pong_secure)
         ;;
     async)
         QPS_SCENARIO_LIST=(protobuf_async_streaming_qps_unconstrained_insecure \
@@ -157,7 +159,9 @@ case "${QPS_SCENARIO_GROUP}" in
         ;;
     async_pp)
         QPS_SCENARIO_LIST=(protobuf_async_streaming_ping_pong_insecure \
-            protobuf_async_streaming_ping_pong_secure)
+            protobuf_async_streaming_ping_pong_secure \
+            protobuf_async_unary_ping_pong_insecure \
+            protobuf_async_unary_ping_pong_secure)
         ;;
     *)
         echo "Invalid scenario group selection"
