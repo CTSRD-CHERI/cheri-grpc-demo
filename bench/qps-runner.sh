@@ -13,7 +13,7 @@ ROOTFS_DIR=
 POUDRIERE_CONF=/usr/local/etc/poudriere.d
 QPS_DEMO=$(readlink -f $(dirname "$0"))
 
-OPTSTRING=":w:p:P:nx:r:c"
+OPTSTRING=":w:p:P:nx:r:cCi:g:"
 X=
 STEP=
 POUDRIERE_CLEAN=
@@ -22,6 +22,8 @@ ABIS=(hybrid purecap benchmark)
 #VARIANTS=(base stackinit)
 VARIANTS=(base)
 RUNTIMES=(base c18n revoke)
+ITERATIONS=
+SCENARIO_GROUP=
 
 function usage()
 {
@@ -35,6 +37,9 @@ function usage()
     echo -e "\t-n\tPretend run, print the commands without doing anything"
     echo -e "\t-x\tExecute given step, valid values are {setup, qps}"
     echo -e "\t-c\tClean the grpc-qps package in jails build but not dependencies"
+    echo -e "\t-C\tClean all the packages when building"
+    echo -e "\t-i\tBenchmark iterations to run (default see qps/run-qps.sh)"
+    echo -e "\t-g\tQPS scenario group (default see qps/run-qps.sh)"
     exit 1
 }
 
@@ -66,6 +71,15 @@ while getopts ${OPTSTRING} opt; do
             ;;
         c)
             POUDRIERE_CLEAN="-C"
+            ;;
+        C)
+            POUDRIERE_CLEAN="-c"
+            ;;
+        i)
+            ITERATIONS=${OPTARG}
+            ;;
+        g)
+            SCENARIO_GROUP=${OPTARG}
             ;;
         :)
             echo "Option -${OPTARG} requires an argument"
@@ -182,7 +196,7 @@ function buildpkg()
     fi
     name="$(jailname ${1} ${2} ${3})"
     ${X} poudriere bulk -j "${name}" -p "${PORTS_NAME}" -z "${port_set}" \
-         "${POUDRIERE_CLEAN}" benchmarks/grpc-qps
+         ${POUDRIERE_CLEAN} benchmarks/grpc-qps
 }
 
 # $1 => jail abi
@@ -241,19 +255,6 @@ function setup()
         done
     done
 
-    # Ensure that the result directories exist
-    ${X} mkdir -p ${WORKSPACE}/results
-    for abi in ${ABIS[@]}; do
-        for variant in ${VARIANTS[@]}; do
-            for rt in ${RUNTIMES[@]}; do
-                if valid_combination ${abi} ${variant} ${rt}; then
-                    continue
-                fi
-                ensure_result_dirs ${abi} ${variant} ${rt}
-            done
-        done
-    done
-
     # Install the poudriere jail hook to mount
     # ${WORKSPACE}/results into root/results
     # ${WORKSPACE}/qps into root/scripts
@@ -280,8 +281,19 @@ function run_qps_jail()
     ${X} poudriere jail -s -j "${name}" -p "${PORTS_NAME}" -z "${port_set}"
     # Note that the -n suffix indicates the jail instance with network access
     jail_fullname="${name}-${PORTS_NAME}-${port_set}-n"
-    ${X} jexec "${jail_fullname}" /bin/csh -c "/root/qps/bootstrap.sh"
-    ${X} jexec "${jail_fullname}" /bin/csh -c "/root/qps/run-qps.sh -a ${abi} -r ${rt}"
+    ${X} jexec "${jail_fullname}" /bin/csh -c "/root/qps/bootstrap.sh ${abi}"
+    if [ $? != 0 ]; then
+        echo "Could not bootstrap QPS"
+        exit 1
+    fi
+    extra_args=
+    if [ ! -z "${ITERATIONS}" ]; then
+        extra_args+=" -i ${ITERATIONS}"
+    fi
+    if [ ! -z "${SCENARIO_GROUP}" ]; then
+        extra_args+=" -g ${SCENARIO_GROUP}"
+    fi
+    ${X} jexec "${jail_fullname}" /bin/csh -c "/root/qps/run-qps.sh -a ${abi} -r ${rt} ${extra_args}"
     ${X} poudriere jail -k -j "${name}" -p "${PORTS_NAME}" -z "${port_set}"
 }
 
@@ -301,6 +313,19 @@ function run_qps()
             exit 1
         fi
     fi
+
+    # Ensure that the result directories exist
+    ${X} mkdir -p ${WORKSPACE}/results
+    for abi in ${ABIS[@]}; do
+        for variant in ${VARIANTS[@]}; do
+            for rt in ${RUNTIMES[@]}; do
+                if valid_combination ${abi} ${variant} ${rt}; then
+                    continue
+                fi
+                ensure_result_dirs ${abi} ${variant} ${rt}
+            done
+        done
+    done
 
     echo "Run QPS benchmarks"
     for abi in ${ABIS[@]}; do
