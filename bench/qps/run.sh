@@ -97,7 +97,6 @@ QPS_SCENARIO_PREFIX=scenario_dump_cpp_
 case "${QPS_SCENARIO_GROUP}" in
     sync)
         QPS_SCENARIO_LIST=(protobuf_sync_streaming_qps_unconstrained_insecure \
-            protobuf_sync_streaming_qps_unconstrained_insecure_134217728b \
             protobuf_sync_streaming_qps_unconstrained_insecure_16777216b \
             protobuf_sync_streaming_qps_unconstrained_insecure_2097152b \
             protobuf_sync_streaming_qps_unconstrained_insecure_262144b \
@@ -107,11 +106,11 @@ case "${QPS_SCENARIO_GROUP}" in
             protobuf_sync_streaming_qps_unconstrained_insecure_64b \
             protobuf_sync_streaming_qps_unconstrained_insecure_8b \
             protobuf_sync_streaming_qps_unconstrained_insecure_1b)
-        #    protobuf_sync_streaming_qps_unconstrained_insecure_1073741824b \
+        #   protobuf_sync_streaming_qps_unconstrained_insecure_134217728b \
+        #   protobuf_sync_streaming_qps_unconstrained_insecure_1073741824b \
         ;;
     sync_tls)
         QPS_SCENARIO_LIST=(protobuf_sync_streaming_qps_unconstrained_secure \
-            protobuf_sync_streaming_qps_unconstrained_secure_134217728b \
             protobuf_sync_streaming_qps_unconstrained_secure_16777216b \
             protobuf_sync_streaming_qps_unconstrained_secure_2097152b \
             protobuf_sync_streaming_qps_unconstrained_secure_262144b \
@@ -121,7 +120,8 @@ case "${QPS_SCENARIO_GROUP}" in
             protobuf_sync_streaming_qps_unconstrained_secure_64b \
             protobuf_sync_streaming_qps_unconstrained_secure_8b \
             protobuf_sync_streaming_qps_unconstrained_secure_1b)
-        #    protobuf_sync_streaming_qps_unconstrained_secure_1073741824b \
+        #   protobuf_sync_streaming_qps_unconstrained_secure_134217728b \
+        #   protobuf_sync_streaming_qps_unconstrained_secure_1073741824b \
         ;;
     sync_pp)
         QPS_SCENARIO_LIST=(protobuf_sync_streaming_ping_pong_insecure \
@@ -131,7 +131,6 @@ case "${QPS_SCENARIO_GROUP}" in
         ;;
     async)
         QPS_SCENARIO_LIST=(protobuf_async_streaming_qps_unconstrained_insecure \
-            protobuf_async_streaming_qps_unconstrained_insecure_134217728b \
             protobuf_async_streaming_qps_unconstrained_insecure_16777216b \
             protobuf_async_streaming_qps_unconstrained_insecure_2097152b \
             protobuf_async_streaming_qps_unconstrained_insecure_262144b \
@@ -141,11 +140,11 @@ case "${QPS_SCENARIO_GROUP}" in
             protobuf_async_streaming_qps_unconstrained_insecure_64b \
             protobuf_async_streaming_qps_unconstrained_insecure_8b \
             protobuf_async_streaming_qps_unconstrained_insecure_1b)
-        #    protobuf_async_streaming_qps_unconstrained_insecure_1073741824b \
+        #   protobuf_async_streaming_qps_unconstrained_insecure_134217728b \
+        #   protobuf_async_streaming_qps_unconstrained_insecure_1073741824b \
         ;;
     async_tls)
         QPS_SCENARIO_LIST=(protobuf_async_streaming_qps_unconstrained_secure \
-            protobuf_async_streaming_qps_unconstrained_secure_134217728b \
             protobuf_async_streaming_qps_unconstrained_secure_16777216b \
             protobuf_async_streaming_qps_unconstrained_secure_2097152b \
             protobuf_async_streaming_qps_unconstrained_secure_262144b \
@@ -155,7 +154,8 @@ case "${QPS_SCENARIO_GROUP}" in
             protobuf_async_streaming_qps_unconstrained_secure_64b \
             protobuf_async_streaming_qps_unconstrained_secure_8b \
             protobuf_async_streaming_qps_unconstrained_secure_1b)
-            #    protobuf_async_streaming_qps_unconstrained_secure_1073741824b \
+        #   protobuf_async_streaming_qps_unconstrained_secure_134217728b \
+        #   protobuf_async_streaming_qps_unconstrained_secure_1073741824b \
         ;;
     async_pp)
         QPS_SCENARIO_LIST=(protobuf_async_streaming_ping_pong_insecure \
