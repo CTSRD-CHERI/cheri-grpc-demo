@@ -61,7 +61,7 @@ case "${QPS_PACKAGE_ABI}" in
         ;;
     hybrid)
         PREFIX=/usr/local64
-        PKG=pkg64
+        PKG=/usr/local64/sbin/pkg
         C18N_INTERP=
         ;;
     purecap)
