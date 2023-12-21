@@ -314,6 +314,14 @@ function run_qps()
         fi
     fi
 
+    # Note that some gRPC tests can spawn a lot of threads
+    # Increment the thread per proc limit
+    thr_limit=$(sysctl sysctl kern.threads.max_threads_per_proc)
+    if (( ${thr_limit} < 5000 )); then
+        echo "WARNING: Detected low max_threads_per_proc limit, increasing to 5k"
+        ${X} sysctl sysctl kern.threads.max_threads_per_proc=5000
+    fi
+
     # Ensure that the result directories exist
     ${X} mkdir -p ${WORKSPACE}/results
     for abi in ${ABIS[@]}; do
