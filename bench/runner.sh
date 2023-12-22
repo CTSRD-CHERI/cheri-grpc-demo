@@ -1,8 +1,6 @@
 #!/bin/bash
 #
-# This script produces grpc benchmark packages using poudriere.
-# Note that this requires a specific poudriere branch with patches to enable building
-# package variations with LLVM stack zeroing.
+# This script produces qps and nginx benchmark packages using poudriere.
 #
 
 JAIL_PREFIX="grpc-"
@@ -19,8 +17,7 @@ STEP=
 POUDRIERE_CLEAN=
 
 ABIS=(hybrid purecap benchmark)
-#VARIANTS=(base stackinit)
-VARIANTS=(base)
+VARIANTS=(base stackzero subobj)
 RUNTIMES=(base c18n revoke)
 ITERATIONS=
 SCENARIO_GROUP=
@@ -35,7 +32,8 @@ function usage()
     echo -e "\t-p\tPorts tree name, default ${PORTS_NAME}"
     echo -e "\t-P\tPath to the ports tree, default ${PORTS_PATH}"
     echo -e "\t-n\tPretend run, print the commands without doing anything"
-    echo -e "\t-x\tExecute given step, valid values are {setup, qps}"
+    echo -e "\t-x\tExecute given step, valid values are {setup, qps-packages, " \
+         "nginx-packages, qps, nginx}"
     echo -e "\t-c\tClean the grpc-qps package in jails build but not dependencies"
     echo -e "\t-C\tClean all the packages when building"
     echo -e "\t-i\tBenchmark iterations to run (default see qps/run-qps.sh)"
@@ -185,18 +183,26 @@ function mkjail()
     fi
 }
 
-# $1 => jail abi
-# $2 => jail variant
-# $3 => jail runtime configuration
+# $1 => package name
+# $2 => jail abi
+# $3 => jail variant
+# $4 => jail runtime configuration
 function buildpkg()
 {
-    port_set=$(abi_to_port_set ${1})
-    if [ "${2}" = "stackinit" ]; then
-        port_set="${port_set}_stackzero"
+    package=${1}
+    abi=${2}
+    variant=${3}
+    rt=${4}
+
+    port_set=$(abi_to_port_set ${abi})
+    if [ "${variant}" == "stackzero" ]; then
+        package="${package}@stackzero"
+    elif [ "${variant}" == "subobj" ]; then
+        package="${package}@subobj"
     fi
-    name="$(jailname ${1} ${2} ${3})"
+    name="$(jailname ${abi} ${variant} ${rt})"
     ${X} poudriere bulk -j "${name}" -p "${PORTS_NAME}" -z "${port_set}" \
-         ${POUDRIERE_CLEAN} benchmarks/grpc-qps
+         ${POUDRIERE_CLEAN} "${package}"
 }
 
 # $1 => jail abi
@@ -215,20 +221,44 @@ function ensure_result_dirs()
 }
 
 # Determine whether the tuple (abi, variant, runtime) is valid
-# $1 => jail abi
-# $2 => jail variant
-# $3 => jail runtime config
+# $1 => benchmark type (qps, nginx)
+# $2 => jail abi
+# $3 => jail variant
+# $4 => jail runtime config
+# Note, we need to return exit code 1 when the combination is NOT valid
 function valid_combination()
 {
-    abi=${1}
-    variant=${2}
-    rt=${3}
+    bench=${1}
+    abi=${2}
+    variant=${3}
+    rt=${4}
 
+    # Hybrid can only run the baseline tuple
     if [ "${abi}" == "hybrid" ] && ([ "${variant}" != "base" ] || [ "${rt}" != "base" ]); then
-        return 0
-    else
         return 1
     fi
+
+    # TODO implement stackzero
+    if [ "${variant}" == "stackzero" ]; then
+        return 1
+    fi
+
+    case ${bench} in
+        qps)
+            # QPS does not support subobject
+            if [ "${variant}" == "subobj" ]; then
+                return 1
+            fi
+            ;;
+        nginx)
+            # Everything else is allowed
+            ;;
+        *)
+            echo "Invalid target for valid_combination ${bench}"
+            exit 1
+    esac
+
+    return 0
 }
 
 # Main setup function
@@ -247,43 +277,68 @@ function setup()
         done
     done
 
-    # Build packages for each target / feature combination
-    echo "Start building packages"
-    for abi in ${ABIS[@]}; do
-        for variant in ${VARIANTS[@]}; do
-            buildpkg ${abi} ${variant}
-        done
-    done
-
     # Install the poudriere jail hook to mount
     # ${WORKSPACE}/results into root/results
-    # ${WORKSPACE}/qps into root/scripts
-    jail_hook="$(m4 -DQPS_WORKSPACE=${WORKSPACE} -DQPS_SCRIPTS=${QPS_DEMO}/qps ${QPS_DEMO}/jail-hook.sh.in)"
+    # ${WORKSPACE}/qps into root/qps
+    # ${WORKSPACE}/nginx into root/nginx
+    jail_hook="$(m4 -DQPS_WORKSPACE=${WORKSPACE} -DQPS_SCRIPTS=${QPS_DEMO}/qps -DNGINX_SCRIPTS=${QPS_DEMO}/nginx ${QPS_DEMO}/jail-hook.sh.in)"
 
     write_to ${POUDRIERE_CONF}/hooks/jail.sh "${jail_hook}"
 }
 
-# Run the QPS benchmark in a jail
+# Build qps packages for each jail
+function build_qps()
+{
+    # Build packages for each target / feature combination
+    echo "Building qps packages"
+    for abi in ${ABIS[@]}; do
+        for variant in ${VARIANTS[@]}; do
+            if valid_combination "qps" ${abi} ${variant} "base"; then
+                buildpkg "benchmarks/grpc-qps" ${abi} ${variant}
+            fi
+        done
+    done
+}
+
+# Build nginx packages for each jail
+function build_nginx()
+{
+    # Build packages for each target / feature combination
+    echo "Building nginx packages"
+    for abi in ${ABIS[@]}; do
+        for variant in ${VARIANTS[@]}; do
+            if valid_combination "nginx" ${abi} ${variant} "base"; then
+                buildpkg "www/nginx" ${abi} ${variant}
+            fi
+        done
+    done
+}
+
+# Run the wrk benchmark for nginx in a jail
 # $1 => abi
 # $2 => variant
 # $3 => runtime config
-function run_qps_jail()
+# $4 => benchmark (qps, nginx)
+function run_jail()
 {
     abi="${1}"
     variant="${2}"
     rt="${3}"
+    bench="${4}"
 
-    echo "+++ Run benchmark for ${abi} variant=${variant} runtime=${rt} +++"
+    echo "+++ Run ${bench} benchmark for ${abi} variant=${variant} runtime=${rt} +++"
+
+    bootstrap_script="/root/${bench}/bootstrap.sh ${abi}"
+    exec_script="/root/${bench}/run.sh -a ${abi} -r ${rt}"
 
     name=$(jailname ${abi} ${variant} ${rt})
     port_set=$(abi_to_port_set ${abi})
-    echo "Run QPS in jail ${name}"
     ${X} poudriere jail -s -j "${name}" -p "${PORTS_NAME}" -z "${port_set}"
     # Note that the -n suffix indicates the jail instance with network access
-    jail_fullname="${name}-${PORTS_NAME}-${port_set}-n"
-    ${X} jexec "${jail_fullname}" /bin/csh -c "/root/qps/bootstrap.sh ${abi}"
+    jail_execname="${name}-${PORTS_NAME}-${port_set}-n"
+    ${X} jexec "${jail_execname}" /bin/csh -c "${bootstrap_script}"
     if [ $? != 0 ]; then
-        echo "Could not bootstrap QPS"
+        echo "Could not bootstrap ${bench}"
         exit 1
     fi
     extra_args=
@@ -293,13 +348,16 @@ function run_qps_jail()
     if [ ! -z "${SCENARIO_GROUP}" ]; then
         extra_args+=" -g ${SCENARIO_GROUP}"
     fi
-    ${X} jexec "${jail_fullname}" /bin/csh -c "/root/qps/run-qps.sh -a ${abi} -r ${rt} ${extra_args}"
+    ${X} jexec "${jail_execname}" /bin/csh -c "${exec_script} ${extra_args}"
     ${X} poudriere jail -k -j "${name}" -p "${PORTS_NAME}" -z "${port_set}"
 }
 
-# Run the QPS benchmark across all jails
-function run_qps()
+# Run the benchmark across all jails
+# $1 => benchmark name (qps, nginx)
+function run_benchmark()
 {
+    bench="${1}"
+
     revoke_ctl=$(sysctl -n security.cheri.runtime_revocation_default)
     if [ "${revoke_ctl}" == "1" ]; then
         echo "Default revocation is enabled, switch it off for the benchmark"
@@ -327,7 +385,7 @@ function run_qps()
     for abi in ${ABIS[@]}; do
         for variant in ${VARIANTS[@]}; do
             for rt in ${RUNTIMES[@]}; do
-                if valid_combination ${abi} ${variant} ${rt}; then
+                if valid_combination ${bench} ${abi} ${variant} ${rt}; then
                     continue
                 fi
                 ensure_result_dirs ${abi} ${variant} ${rt}
@@ -335,14 +393,15 @@ function run_qps()
         done
     done
 
-    echo "Run QPS benchmarks"
+    echo "Run ${bench} benchmarks"
     for abi in ${ABIS[@]}; do
         for variant in ${VARIANTS[@]}; do
             for rt in ${RUNTIMES[@]}; do
-                if valid_combination ${abi} ${variant} ${rt}; then
+                if valid_combination ${bench} ${abi} ${variant} ${rt}; then
                     continue
                 fi
-                run_qps_jail ${abi} ${variant} ${rt}
+
+                run_jail ${abi} ${variant} ${rt} ${bench}
             done
         done
     done
@@ -350,8 +409,14 @@ function run_qps()
 
 if [ "$STEP" == "setup" ]; then
     setup
+elif [ "$STEP" == "qps-packages" ]; then
+    build_qps
 elif [ "$STEP" == "qps" ]; then
-    run_qps
+    run_benchmark qps
+elif [ "$STEP" == "nginx-packages" ]; then
+    build_nginx
+elif [ "$STEP" == "nginx" ]; then
+    run_benchmark nginx
 elif [ -z "$STEP" ]; then
     echo "Missing command, use -x option"
     exit 1

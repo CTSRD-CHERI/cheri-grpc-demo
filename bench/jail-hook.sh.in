@@ -1,7 +1,8 @@
 #!/bin/sh
 
 BENCHMARK_RESULT_PATH="QPS_WORKSPACE/results"
-BENCHMARK_SCRIPTS_PATH="QPS_SCRIPTS"
+BENCHMARK_QPS_SCRIPTS_PATH="QPS_SCRIPTS"
+BENCHMARK_NGINX_SCRIPTS_PATH="NGINX_SCRIPTS"
 
 event="${1}"
 
@@ -13,9 +14,10 @@ mount)
     mkdir -p "${respath}"
     echo "Mounting QPS benchmark directories"
 	# Mount benchmark directories.
-    mkdir -p "${mntpath}/root/results" "${mntpath}/root/qps"
+    mkdir -p "${mntpath}/root/results" "${mntpath}/root/qps" "${mntpath}/root/nginx"
     mount -r -t nullfs -o rw "${respath}" "${mntpath}/root/results"
-    mount -r -t nullfs -o ro "${BENCHMARK_SCRIPTS_PATH}" "${mntpath}/root/qps"
+    mount -r -t nullfs -o ro "${BENCHMARK_QPS_SCRIPTS_PATH}" "${mntpath}/root/qps"
+    mount -r -t nullfs -o ro "${BENCHMARK_NGINX_SCRIPTS_PATH}" "${mntpath}/root/nginx"
 	;;
 start)
 	;;
