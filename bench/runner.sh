@@ -11,7 +11,7 @@ ROOTFS_DIR=
 POUDRIERE_CONF=/usr/local/etc/poudriere.d
 QPS_DEMO=$(readlink -f $(dirname "$0"))
 
-OPTSTRING=":w:p:P:nx:r:cCi:g:"
+OPTSTRING=":w:p:P:nx:R:cCi:g:a:v:r:"
 X=
 STEP=
 POUDRIERE_CLEAN=
@@ -38,6 +38,9 @@ function usage()
     echo -e "\t-C\tClean all the packages when building"
     echo -e "\t-i\tBenchmark iterations to run (default see qps/run-qps.sh)"
     echo -e "\t-g\tQPS scenario group (default see qps/run-qps.sh)"
+    echo -e "\t-a\tOverride the target ABI (hybrid, purecap, benchmark)"
+    echo -e "\t-v\tOverride the compilation mode variant (base, stackzero, subobj)"
+    echo -e "\t-r\tOverride the run-time configuration (base, c18n, revoke)"
     exit 1
 }
 
@@ -58,7 +61,7 @@ while getopts ${OPTSTRING} opt; do
         P)
             PORTS_PATH=${OPTARG}
             ;;
-        r)
+        R)
             ROOTFS_DIR=${OPTARG}
             ;;
         n)
@@ -78,6 +81,30 @@ while getopts ${OPTSTRING} opt; do
             ;;
         g)
             SCENARIO_GROUP=${OPTARG}
+            ;;
+        a)
+            if [[ ${ABIS[@]} =~ ${OPTARG} ]]; then
+                ABIS=(${OPTARG})
+            else
+                echo "Invalid -a option, must be one of ${ABIS[@]}"
+                usage
+            fi
+            ;;
+        v)
+            if [[ ${VARIANTS[@]} =~ ${OPTARG} ]]; then
+                VARIANTS=(${OPTARG})
+            else
+                echo "Invalid -v option, must be one of ${VARIANTS[@]}"
+                usage
+            fi
+            ;;
+        r)
+            if [[ ${RUNTIMES[@]} =~ ${OPTARG} ]]; then
+                RUNTIMES=(${OPTARG})
+            else
+                echo "Invalid -r option, must be one of ${RUNTIMES[@]}"
+                usage
+            fi
             ;;
         :)
             echo "Option -${OPTARG} requires an argument"
