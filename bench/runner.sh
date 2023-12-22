@@ -413,9 +413,8 @@ function run_benchmark()
         for variant in ${VARIANTS[@]}; do
             for rt in ${RUNTIMES[@]}; do
                 if valid_combination ${bench} ${abi} ${variant} ${rt}; then
-                    continue
+                    ensure_result_dirs ${abi} ${variant} ${rt}
                 fi
-                ensure_result_dirs ${abi} ${variant} ${rt}
             done
         done
     done
@@ -425,10 +424,8 @@ function run_benchmark()
         for variant in ${VARIANTS[@]}; do
             for rt in ${RUNTIMES[@]}; do
                 if valid_combination ${bench} ${abi} ${variant} ${rt}; then
-                    continue
+                    run_jail ${abi} ${variant} ${rt} ${bench}
                 fi
-
-                run_jail ${abi} ${variant} ${rt} ${bench}
             done
         done
     done
