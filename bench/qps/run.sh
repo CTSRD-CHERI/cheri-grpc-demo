@@ -14,8 +14,9 @@ QPS_ITERATIONS=10
 QPS_SCENARIO_GROUP=async
 
 C18N_INTERP=
+PERSISTENT_WORKERS=
 
-OPTSTRING="na:r:i:g:"
+OPTSTRING="na:r:i:g:d"
 X=
 
 function usage()
@@ -28,6 +29,7 @@ function usage()
     echo -e "\t-r\tRuntime benchmark configuration, valid options are c18n, revoke"
     echo -e "\t-i\tIterations, default 10"
     echo -e "\t-g\tBenchmark group, one of async,async_tls,async_pp,sync,sync_tls,sync_pp"
+    echo -e "\t-d\tDo not respawn qps workers for each iteration"
     exit 1
 }
 
@@ -50,6 +52,9 @@ while getopts ${OPTSTRING} opt; do
             ;;
         g)
             QPS_SCENARIO_GROUP=${OPTARG}
+            ;;
+        d)
+            PERSISTENT_WORKERS=1
             ;;
         :)
             echo "Option -${OPTARG} requires an argument"
@@ -97,6 +102,8 @@ QPS_SCENARIO_PREFIX=scenario_dump_cpp_
 case "${QPS_SCENARIO_GROUP}" in
     sync)
         QPS_SCENARIO_LIST=(protobuf_sync_streaming_qps_unconstrained_insecure \
+            # protobuf_sync_streaming_qps_unconstrained_insecure_1073741824b \
+            # protobuf_sync_streaming_qps_unconstrained_insecure_134217728b \
             protobuf_sync_streaming_qps_unconstrained_insecure_16777216b \
             protobuf_sync_streaming_qps_unconstrained_insecure_2097152b \
             protobuf_sync_streaming_qps_unconstrained_insecure_262144b \
@@ -106,11 +113,11 @@ case "${QPS_SCENARIO_GROUP}" in
             protobuf_sync_streaming_qps_unconstrained_insecure_64b \
             protobuf_sync_streaming_qps_unconstrained_insecure_8b \
             protobuf_sync_streaming_qps_unconstrained_insecure_1b)
-        #   protobuf_sync_streaming_qps_unconstrained_insecure_134217728b \
-        #   protobuf_sync_streaming_qps_unconstrained_insecure_1073741824b \
         ;;
     sync_tls)
         QPS_SCENARIO_LIST=(protobuf_sync_streaming_qps_unconstrained_secure \
+            # protobuf_sync_streaming_qps_unconstrained_secure_1073741824b \
+            # protobuf_sync_streaming_qps_unconstrained_secure_134217728b \
             protobuf_sync_streaming_qps_unconstrained_secure_16777216b \
             protobuf_sync_streaming_qps_unconstrained_secure_2097152b \
             protobuf_sync_streaming_qps_unconstrained_secure_262144b \
@@ -120,8 +127,6 @@ case "${QPS_SCENARIO_GROUP}" in
             protobuf_sync_streaming_qps_unconstrained_secure_64b \
             protobuf_sync_streaming_qps_unconstrained_secure_8b \
             protobuf_sync_streaming_qps_unconstrained_secure_1b)
-        #   protobuf_sync_streaming_qps_unconstrained_secure_134217728b \
-        #   protobuf_sync_streaming_qps_unconstrained_secure_1073741824b \
         ;;
     sync_pp)
         QPS_SCENARIO_LIST=(protobuf_sync_streaming_ping_pong_insecure \
@@ -131,8 +136,10 @@ case "${QPS_SCENARIO_GROUP}" in
         ;;
     async)
         QPS_SCENARIO_LIST=(protobuf_async_streaming_qps_unconstrained_insecure \
-            protobuf_async_streaming_qps_unconstrained_insecure_16777216b \
-            protobuf_async_streaming_qps_unconstrained_insecure_2097152b \
+            # protobuf_async_streaming_qps_unconstrained_insecure_1073741824b \
+            # protobuf_async_streaming_qps_unconstrained_insecure_134217728b \
+            # protobuf_async_streaming_qps_unconstrained_insecure_16777216b \
+            # protobuf_async_streaming_qps_unconstrained_insecure_2097152b \
             protobuf_async_streaming_qps_unconstrained_insecure_262144b \
             protobuf_async_streaming_qps_unconstrained_insecure_32768b \
             protobuf_async_streaming_qps_unconstrained_insecure_4096b \
@@ -140,13 +147,13 @@ case "${QPS_SCENARIO_GROUP}" in
             protobuf_async_streaming_qps_unconstrained_insecure_64b \
             protobuf_async_streaming_qps_unconstrained_insecure_8b \
             protobuf_async_streaming_qps_unconstrained_insecure_1b)
-        #   protobuf_async_streaming_qps_unconstrained_insecure_134217728b \
-        #   protobuf_async_streaming_qps_unconstrained_insecure_1073741824b \
         ;;
     async_tls)
         QPS_SCENARIO_LIST=(protobuf_async_streaming_qps_unconstrained_secure \
-            protobuf_async_streaming_qps_unconstrained_secure_16777216b \
-            protobuf_async_streaming_qps_unconstrained_secure_2097152b \
+            # protobuf_async_streaming_qps_unconstrained_secure_1073741824b \
+            # protobuf_async_streaming_qps_unconstrained_secure_134217728b \
+            # protobuf_async_streaming_qps_unconstrained_secure_16777216b \
+            # protobuf_async_streaming_qps_unconstrained_secure_2097152b \
             protobuf_async_streaming_qps_unconstrained_secure_262144b \
             protobuf_async_streaming_qps_unconstrained_secure_32768b \
             protobuf_async_streaming_qps_unconstrained_secure_4096b \
@@ -154,8 +161,6 @@ case "${QPS_SCENARIO_GROUP}" in
             protobuf_async_streaming_qps_unconstrained_secure_64b \
             protobuf_async_streaming_qps_unconstrained_secure_8b \
             protobuf_async_streaming_qps_unconstrained_secure_1b)
-        #   protobuf_async_streaming_qps_unconstrained_secure_134217728b \
-        #   protobuf_async_streaming_qps_unconstrained_secure_1073741824b \
         ;;
     async_pp)
         QPS_SCENARIO_LIST=(protobuf_async_streaming_ping_pong_insecure \
@@ -214,23 +219,32 @@ echo "=== Setup benchmark ==="
 echo "Start port server..."
 ${X} grpc_qps_port_server
 
-echo "Start qps workers..."
 W0_PORT=20000
 W1_PORT=20001
 
 # Terminate any stragglers
 ${X} pkill grpc_qps_worker || true
 
-${X} grpc_qps_worker --driver_port=${W0_PORT} &
-WORKER0_PID=$!
-${X} grpc_qps_worker --driver_port=${W1_PORT} &
-WORKER1_PID=$!
-export QPS_WORKERS=localhost:${W0_PORT},localhost:${W1_PORT}
-# Wait for the workers to settle a bit before starting
-${X} sleep 1
+function start_workers()
+{
+    echo "Start qps workers..."
+    ${X} grpc_qps_worker --driver_port=${W0_PORT} &
+    WORKER0_PID=$!
+    ${X} grpc_qps_worker --driver_port=${W1_PORT} &
+    WORKER1_PID=$!
+    export QPS_WORKERS=localhost:${W0_PORT},localhost:${W1_PORT}
+    # Wait for the workers to settle a bit before starting
+    ${X} sleep 1
 
-echo "Worker 0: PID ${WORKER0_PID}"
-echo "Worker 1: PID ${WORKER1_PID}"
+    echo "Worker 0: PID ${WORKER0_PID}"
+    echo "Worker 1: PID ${WORKER1_PID}"
+}
+
+function stop_workers()
+{
+    ${X} kill ${WORKER0_PID}
+    ${X} kill ${WORKER1_PID}
+}
 
 # $1 => iteration number
 # $2 => scenario name
@@ -240,9 +254,17 @@ function run_qps()
     name=${2}
     fullname="${QPS_SCENARIO_PREFIX}${name}.json"
 
+    if [ -z "${PERSISTENT_WORKERS}" ]; then
+        start_workers
+    fi
+
     ${X} grpc_qps_json_driver \
         --scenarios_file "${QPS_SCENARIOS}/${fullname}" \
         --scenario_result_file "${QPS_RESULTS_DIR}/summary_${name}.${iteration}.json"
+
+    if [ -z "${PERSISTENT_WORKERS}" ]; then
+        stop_workers
+    fi
 }
 
 # $1 => scenario name
@@ -255,6 +277,10 @@ function run_scenario()
     done
     echo "--- Scenario ${name} ---"
 }
+
+if [ ! -z "${PERSISTENT_WORKERS}" ]; then
+    start_workers
+fi
 
 echo "=== Begin benchmark loop ==="
 for scenario in ${QPS_SCENARIO_LIST[@]}; do
