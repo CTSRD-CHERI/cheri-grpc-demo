@@ -174,7 +174,7 @@ case "${QPS_SCENARIO_GROUP}" in
 esac
 
 echo "QPS_ITERATIONS:   ${QPS_ITERATIONS}"
-echo "QPS_CONFIGS:      ${QPS_SCENARIO_LIST}"
+echo "QPS_CONFIGS:      ${QPS_SCENARIO_LIST[@]}"
 echo "QPS_RESULTS_DIR:  ${QPS_RESULTS_DIR}"
 # Check whether runtime revocation is enabeld by default, we only want revocation explicitly
 default_revoke=$(sysctl -n security.cheri.runtime_revocation_default)

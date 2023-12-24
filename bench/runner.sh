@@ -9,7 +9,7 @@ PORTS_PATH=${HOME}/cheri/cheribsd-ports-next
 WORKSPACE=${PWD}
 ROOTFS_DIR=
 POUDRIERE_CONF=/usr/local/etc/poudriere.d
-QPS_DEMO=$(readlink -f $(dirname "$0"))
+CURDIR=$(readlink -f $(dirname "$0"))
 
 OPTSTRING=":w:p:P:nx:R:cCi:g:a:v:r:"
 X=
@@ -308,7 +308,7 @@ function setup()
     # ${WORKSPACE}/results into root/results
     # ${WORKSPACE}/qps into root/qps
     # ${WORKSPACE}/nginx into root/nginx
-    jail_hook="$(m4 -DQPS_WORKSPACE=${WORKSPACE} -DQPS_SCRIPTS=${QPS_DEMO}/qps -DNGINX_SCRIPTS=${QPS_DEMO}/nginx ${QPS_DEMO}/jail-hook.sh.in)"
+    jail_hook="$(m4 -DQPS_WORKSPACE=${WORKSPACE} -DQPS_SCRIPTS=${CURDIR}/qps -DNGINX_SCRIPTS=${CURDIR}/nginx ${CURDIR}/jail-hook.sh.in)"
 
     write_to ${POUDRIERE_CONF}/hooks/jail.sh "${jail_hook}"
 }
