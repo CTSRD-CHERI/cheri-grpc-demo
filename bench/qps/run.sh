@@ -7,7 +7,7 @@
 
 set -e
 
-QPS_PACKAGE="${QPS_PACKAGE:=grpc-qps-1.54.2,2.pkg}"
+QPS_PACKAGE_FLAVOR=
 QPS_PACKAGE_ABI=invalid
 QPS_EXPERIMENT=base
 QPS_ITERATIONS=10
@@ -34,6 +34,59 @@ function usage()
     exit 1
 }
 
+function start_workers()
+{
+    echo "Start qps workers..."
+    ${X} grpc_qps_worker --driver_port=${W0_PORT} &
+    WORKER0_PID=$!
+    ${X} grpc_qps_worker --driver_port=${W1_PORT} &
+    WORKER1_PID=$!
+    export QPS_WORKERS=localhost:${W0_PORT},localhost:${W1_PORT}
+    # Wait for the workers to settle a bit before starting
+    ${X} sleep 1
+
+    echo "Worker 0: PID ${WORKER0_PID}"
+    echo "Worker 1: PID ${WORKER1_PID}"
+}
+
+function stop_workers()
+{
+    ${X} kill ${WORKER0_PID}
+    ${X} kill ${WORKER1_PID}
+}
+
+# $1 => iteration number
+# $2 => scenario name
+function run_qps()
+{
+    iteration=${1}
+    name=${2}
+    fullname="${QPS_SCENARIO_PREFIX}${name}.json"
+
+    if [ -z "${PERSISTENT_WORKERS}" ]; then
+        start_workers
+    fi
+
+    ${X} grpc_qps_json_driver \
+        --scenarios_file "${QPS_SCENARIOS}/${fullname}" \
+        --scenario_result_file "${QPS_RESULTS_DIR}/summary_${name}.${iteration}.json"
+
+    if [ -z "${PERSISTENT_WORKERS}" ]; then
+        stop_workers
+    fi
+}
+
+# $1 => scenario name
+function run_scenario()
+{
+    name=${1}
+    echo "+++ Scenario ${name} ${QPS_ITERATIONS} iterations +++"
+    for i in $(seq 1 ${QPS_ITERATIONS}); do
+        run_qps ${i} ${name}
+    done
+    echo "--- Scenario ${name} ---"
+}
+
 while getopts ${OPTSTRING} opt; do
     case ${opt} in
         h)
@@ -56,6 +109,11 @@ while getopts ${OPTSTRING} opt; do
             ;;
         d)
             PERSISTENT_WORKERS=1
+            ;;
+        v)
+            if [ "${OPTARG}" != "base" ]; then
+                QPS_PACKAGE_FLAVOR="-${OPTARG}"
+            fi
             ;;
         :)
             echo "Option -${OPTARG} requires an argument"
@@ -95,6 +153,7 @@ case "${QPS_PACKAGE_ABI}" in
         exit 1
 esac
 
+QPS_PACKAGE="grpc-qps${QPS_PACKAGE_FLAVOR}-1.54.2,2.pkg"
 QPS_SCENARIOS="${PREFIX}/share/grpc-qps/scenarios"
 QPS_RESULTS_DIR="/root/results/${QPS_EXPERIMENT}"
 
@@ -174,6 +233,7 @@ case "${QPS_SCENARIO_GROUP}" in
         exit 1
 esac
 
+echo "QPS_PACKAGE:      ${QPS_PACKAGE}"
 echo "QPS_ITERATIONS:   ${QPS_ITERATIONS}"
 echo "QPS_CONFIGS:      ${QPS_SCENARIO_LIST[@]}"
 echo "QPS_RESULTS_DIR:  ${QPS_RESULTS_DIR}"
@@ -225,59 +285,6 @@ W1_PORT=20001
 
 # Terminate any stragglers
 ${X} pkill grpc_qps_worker || true
-
-function start_workers()
-{
-    echo "Start qps workers..."
-    ${X} grpc_qps_worker --driver_port=${W0_PORT} &
-    WORKER0_PID=$!
-    ${X} grpc_qps_worker --driver_port=${W1_PORT} &
-    WORKER1_PID=$!
-    export QPS_WORKERS=localhost:${W0_PORT},localhost:${W1_PORT}
-    # Wait for the workers to settle a bit before starting
-    ${X} sleep 1
-
-    echo "Worker 0: PID ${WORKER0_PID}"
-    echo "Worker 1: PID ${WORKER1_PID}"
-}
-
-function stop_workers()
-{
-    ${X} kill ${WORKER0_PID}
-    ${X} kill ${WORKER1_PID}
-}
-
-# $1 => iteration number
-# $2 => scenario name
-function run_qps()
-{
-    iteration=${1}
-    name=${2}
-    fullname="${QPS_SCENARIO_PREFIX}${name}.json"
-
-    if [ -z "${PERSISTENT_WORKERS}" ]; then
-        start_workers
-    fi
-
-    ${X} grpc_qps_json_driver \
-        --scenarios_file "${QPS_SCENARIOS}/${fullname}" \
-        --scenario_result_file "${QPS_RESULTS_DIR}/summary_${name}.${iteration}.json"
-
-    if [ -z "${PERSISTENT_WORKERS}" ]; then
-        stop_workers
-    fi
-}
-
-# $1 => scenario name
-function run_scenario()
-{
-    name=${1}
-    echo "+++ Scenario ${name} ${QPS_ITERATIONS} iterations +++"
-    for i in $(seq 1 ${QPS_ITERATIONS}); do
-        run_qps ${i} ${name}
-    done
-    echo "--- Scenario ${name} ---"
-}
 
 if [ ! -z "${PERSISTENT_WORKERS}" ]; then
     start_workers
