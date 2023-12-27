@@ -20,7 +20,6 @@ if ! test -f "$(which ${PKG})"; then
     exit 1
 fi
 
-env ASSUME_ALWAYS_YES=yes /usr/local64/sbin/pkg install bash wrk patchelf
+env ASSUME_ALWAYS_YES=yes /usr/local64/sbin/pkg install bash patchelf
 
-echo "PYTHON $(python --version)"
 echo "BASH $(bash --version)"

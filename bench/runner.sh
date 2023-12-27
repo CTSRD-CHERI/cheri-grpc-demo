@@ -126,7 +126,7 @@ echo "PORTS_PATH=${PORTS_PATH}"
 # $2 => data
 function write_to()
 {
-    if [ "${X}" = "" ]; then
+    if [ -z "${X}" ]; then
         echo "${2}" > "${1}"
     else
         echo "==="
@@ -356,7 +356,7 @@ function run_jail()
     echo "+++ Run ${bench} benchmark for ${abi} variant=${variant} runtime=${rt} +++"
 
     bootstrap_script="/root/${bench}/bootstrap.sh ${abi}"
-    exec_script="/root/${bench}/run.sh -a ${abi} -r ${rt}"
+    exec_script="/root/${bench}/run.sh -a ${abi} -v ${variant} -r ${rt}"
 
     name=$(jailname ${abi} ${variant} ${rt})
     port_set=$(abi_to_port_set ${abi})

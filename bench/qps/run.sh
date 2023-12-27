@@ -16,7 +16,7 @@ QPS_SCENARIO_GROUP=async
 C18N_INTERP=
 PERSISTENT_WORKERS=
 
-OPTSTRING="na:r:i:g:d"
+OPTSTRING="na:r:i:g:dv:"
 X=
 
 function usage()
@@ -26,6 +26,7 @@ function usage()
     echo -e "\t-h\tShow help message"
     echo -e "\t-n\tPretend run, print the commands without doing anything"
     echo -e "\t-a\tABI of the QPS benchmark to run, this must match the installed package abi"
+    echo -e "\t-v\tBuild variant of the QPS benchmark to run, this must match the package flavor"
     echo -e "\t-r\tRuntime benchmark configuration, valid options are c18n, revoke"
     echo -e "\t-i\tIterations, default 10"
     echo -e "\t-g\tBenchmark group, one of async,async_tls,async_pp,sync,sync_tls,sync_pp"

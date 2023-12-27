@@ -2,12 +2,14 @@
 -- This script produces output as json
 
 done = function(summary, latency, requests)
-  f = io.open("wrk-result.json")
+  f = io.open("wrk-result.json", "w+")
   f:write("{")
+
   f:write('"summary": {')
   f:write(string.format('"duration": %d,', summary["duration"]))
   f:write(string.format('"requests": %d,', summary["requests"]))
-  f:write(string.format('"bytes": %d,', summary["bytes"]))
+  f:write(string.format('"bytes": %d', summary["bytes"]))
+  f:write("},")
 
   f:write('"errors": {')
   f:write(string.format('"connect": %d,', summary["errors"]["connect"]))
@@ -26,12 +28,7 @@ done = function(summary, latency, requests)
   f:write(string.format('"percentile90": %d,', latency:percentile(90.0)))
   f:write(string.format('"percentile95": %d,', latency:percentile(95.0)))
   f:write(string.format('"percentile99": %d,', latency:percentile(99.0)))
-  f:write(string.format('"percentile999": %d,', latency:percentile(99.9)))
-  f:write('"histogram": [')
-  for bucket, count in pairs(latency.latency) do
-    f:write(string.format('[%d, %d],', bucket, count))
-  end
-  f:write("]")
+  f:write(string.format('"percentile999": %d', latency:percentile(99.9)))
   f:write("}}")
 
   f:close()
