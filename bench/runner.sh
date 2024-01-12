@@ -18,9 +18,16 @@ POUDRIERE_CLEAN=
 
 ABIS=(hybrid purecap benchmark)
 VARIANTS=(base stackzero subobj)
-RUNTIMES=(base c18n revoke)
+RUNTIMES=(base c18n c18n_policy revoke)
 ITERATIONS=
 SCENARIO_GROUP=
+
+HELP_ABIS="${ABIS[@]}"
+HELP_ABIS="${HELP_ABIS// /, }"
+HELP_VARIANTS="${VARIANTS[@]}"
+HELP_VARIANTS="${HELP_VARIANTS// /, }"
+HELP_RT="${RUNTIMES[@]}"
+HELP_RT="${HELP_RT// /, }"
 
 function usage()
 {
@@ -36,11 +43,11 @@ function usage()
          "nginx-packages, qps, nginx}"
     echo -e "\t-c\tClean the grpc-qps package in jails build but not dependencies"
     echo -e "\t-C\tClean all the packages when building"
-    echo -e "\t-i\tBenchmark iterations to run (default see qps/run-qps.sh)"
-    echo -e "\t-g\tQPS scenario group (default see qps/run-qps.sh)"
-    echo -e "\t-a\tOverride the target ABI (hybrid, purecap, benchmark)"
-    echo -e "\t-v\tOverride the compilation mode variant (base, stackzero, subobj)"
-    echo -e "\t-r\tOverride the run-time configuration (base, c18n, revoke)"
+    echo -e "\t-i\tBenchmark iterations to run (default see qps/run.sh)"
+    echo -e "\t-g\tQPS scenario group (default see qps/run.sh)"
+    echo -e "\t-a\tOverride the target ABI (${HELP_ABIS})"
+    echo -e "\t-v\tOverride the compilation mode variant (${HELP_VARIANTS})"
+    echo -e "\t-r\tOverride the run-time configuration (${HELP_RT})"
     exit 1
 }
 
@@ -279,6 +286,15 @@ function valid_combination()
             ;;
         nginx)
             # Everything else is allowed
+            if [ "${rt}" == "c18n_policy" ]; then
+                # We have no policy for wrk
+                return 1
+            fi
+
+            # if [ "${rt}" == "revoke" ]; then
+            #     # XXX Temporarily disable revoke as it seems to trigger kernel panic
+            #     return 1
+            # fi
             ;;
         *)
             echo "Invalid target for valid_combination ${bench}"

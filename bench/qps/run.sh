@@ -12,8 +12,12 @@ QPS_PACKAGE_ABI=invalid
 QPS_EXPERIMENT=base
 QPS_ITERATIONS=10
 QPS_SCENARIO_GROUP=async
+# Assume that the QPS benchmark data and scripts are mounted at /root/qps
+CURDIR="/root/qps"
 
 C18N_INTERP=
+C18N_POLICY=
+RTLD_ENV_PREFIX=
 PERSISTENT_WORKERS=
 
 OPTSTRING="na:r:i:g:dv:"
@@ -36,10 +40,16 @@ function usage()
 
 function start_workers()
 {
+    local envcmd=""
+
+    if [ -n "${C18N_POLICY}" ]; then
+        envcmd="env ${RTLD_ENV_PREFIX}PRELOAD=${C18N_POLICY}"
+    fi
+
     echo "Start qps workers..."
-    ${X} grpc_qps_worker --driver_port=${W0_PORT} &
+    ${X} ${envcmd} grpc_qps_worker --driver_port=${W0_PORT} &
     WORKER0_PID=$!
-    ${X} grpc_qps_worker --driver_port=${W1_PORT} &
+    ${X} ${envcmd} grpc_qps_worker --driver_port=${W1_PORT} &
     WORKER1_PID=$!
     export QPS_WORKERS=localhost:${W0_PORT},localhost:${W1_PORT}
     # Wait for the workers to settle a bit before starting
@@ -137,16 +147,19 @@ case "${QPS_PACKAGE_ABI}" in
         PREFIX=/usr/local64
         PKG=/usr/local64/sbin/pkg
         C18N_INTERP=
+        RTLD_ENV_PREFIX=
         ;;
     purecap)
         PREFIX=/usr/local
         PKG=pkg64c
         C18N_INTERP=/libexec/ld-elf-c18n.so.1
+        RTLD_ENV_PREFIX="LD_"
         ;;
     benchmark)
         PREFIX=/usr/local64cb
         PKG=pkg64cb
         C18N_INTERP=/libexec/ld-elf64cb-c18n.so.1
+        RTLD_ENV_PREFIX="LD_64CB_"
         ;;
     *)
         echo "ERROR: invalid -a option, must be {hybrid, purecap, benchmark}"
@@ -233,14 +246,6 @@ case "${QPS_SCENARIO_GROUP}" in
         exit 1
 esac
 
-echo "QPS_PACKAGE:      ${QPS_PACKAGE}"
-echo "QPS_ITERATIONS:   ${QPS_ITERATIONS}"
-echo "QPS_CONFIGS:      ${QPS_SCENARIO_LIST[@]}"
-echo "QPS_RESULTS_DIR:  ${QPS_RESULTS_DIR}"
-# Check whether runtime revocation is enabeld by default, we only want revocation explicitly
-default_revoke=$(sysctl -n security.cheri.runtime_revocation_default)
-echo "DEFAULT REVOKE:   ${default_revoke}"
-
 if [ "$default_revoke" == "1" ]; then
     echo "ERROR: Runtime revocation is enabled by default, disable now"
     exit 1
@@ -252,13 +257,17 @@ ${X} env ASSUME_ALWAYS_YES=yes ${PKG} add /packages/All/${QPS_PACKAGE}
 case "${QPS_EXPERIMENT}" in
     base)
         ;;
-    c18n)
+    c18n|c18n_policy)
         if [ -z "${C18N_INTERP}" ]; then
            echo "ERROR: can not use -r c18n with -a hybrid"
            exit 1
         fi
         echo "Patch QPS to enable c18n"
         ${X} patchelf --set-interpreter "${C18N_INTERP}" "${PREFIX}/bin/grpc_qps_worker"
+
+        if [ "${QPS_EXPERIMENT}" == "c18n_policy" ]; then
+            C18N_POLICY="${CURDIR}/policy.so"
+        fi
         ;;
     revoke)
         echo "Patch QPS to enable revocation"
@@ -268,6 +277,15 @@ case "${QPS_EXPERIMENT}" in
         echo "ERROR: invalid -r option, must be {base, c18n, revoke}"
         exit 1
 esac
+
+echo "QPS_PACKAGE:      ${QPS_PACKAGE}"
+echo "QPS_ITERATIONS:   ${QPS_ITERATIONS}"
+echo "QPS_CONFIGS:      ${QPS_SCENARIO_LIST[@]}"
+echo "QPS_RESULTS_DIR:  ${QPS_RESULTS_DIR}"
+# Check whether runtime revocation is enabeld by default, we only want revocation explicitly
+default_revoke=$(sysctl -n security.cheri.runtime_revocation_default)
+echo "DEFAULT REVOKE:   ${default_revoke}"
+echo "QPS_C18N_POLICY:  ${C18N_POLICY}"
 
 ${X} mkdir -p ${QPS_RESULTS_DIR}
 
