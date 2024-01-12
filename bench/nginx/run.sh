@@ -116,7 +116,7 @@ function run_wrk_one()
         start_nginx
     fi
 
-    ${X} wrk -t 1 -c 50 -d 5m --latency -s "${CURDIR}/wrk-report.lua" "https://localhost:10443/rps/${fullname}"
+    ${X} wrk -t 1 -c 50 -d 1m -s "${CURDIR}/wrk-report.lua" "https://localhost:10443/rps/${fullname}"
     ${X} mv wrk-result.json "${NGINX_RESULTS_DIR}/result_${name}.${iteration}.json"
 
     if [ -z "${PERSISTENT_WORKERS}" ]; then
@@ -181,16 +181,19 @@ case "${NGINX_PACKAGE_ABI}" in
     hybrid)
         PREFIX=/usr/local64
         PKG=/usr/local64/sbin/pkg
+        NGINX_CONF=/root/nginx/nginx64.conf
         C18N_INTERP=
         ;;
     purecap)
         PREFIX=/usr/local
         PKG=pkg64c
+        NGINX_CONF=/root/nginx/nginx.conf
         C18N_INTERP=/libexec/ld-elf-c18n.so.1
         ;;
     benchmark)
         PREFIX=/usr/local64cb
         PKG=pkg64cb
+        NGINX_CONF=/root/nginx/nginx64cb.conf
         C18N_INTERP=/libexec/ld-elf64cb-c18n.so.1
         ;;
     *)
@@ -252,7 +255,7 @@ echo "=== Setup benchmark ==="
 NGINX_WWW="${PREFIX}/www/nginx"
 NGINX_ETC="${PREFIX}/etc/nginx"
 ${X} cp -r "/root/nginx/rps" "${NGINX_WWW}"
-${X} cp "/root/nginx/nginx.conf" "${NGINX_ETC}"
+${X} cp "${NGINX_CONF}" "${NGINX_ETC}/nginx.conf"
 ${X} cp "${NGINX_ETC}/mime.types-dist" "${NGINX_ETC}/mime.types"
 gen_ssl
 
