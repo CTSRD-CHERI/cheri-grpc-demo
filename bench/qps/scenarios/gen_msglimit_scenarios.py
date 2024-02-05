@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 UNARY_MESSAGE_LIMIT=200000
-STREAM_MESSAGE_LIMIT=500000
+STREAM_MESSAGE_LIMIT=200000
 
 # Generate the scenario variants with a fixed message limit that replaces the time limit.
 def gen_scenario(path: Path):
