@@ -16,21 +16,24 @@ NGINX_PIDFILE="/var/run/nginx.pid"
 
 C18N_INTERP=
 PERSISTENT_WORKERS=
+WRK_MSGLIMIT=
 
-OPTSTRING="na:r:i:dv:"
+OPTSTRING="na:r:i:dv:f"
 X=
 
 function usage()
 {
     echo "$0 - Run the Morello nginx wrk benchmark"
     echo "Options":
-    echo -e "\t-h\tShow help message"
-    echo -e "\t-n\tPretend run, print the commands without doing anything"
     echo -e "\t-a\tABI of the nginx server to run, this must match the package abi"
-    echo -e "\t-v\tBuild variant of the nginx server to run, this must match the package flavor"
-    echo -e "\t-r\tRuntime benchmark configuration, valid options are {base, c18n, revoke}"
-    echo -e "\t-i\tIterations, default 10"
     echo -e "\t-d\tDo not respawn nginx for each iteration"
+    echo -e "\t-f\tUse fixed message limit"
+    echo -e "\t-h\tShow help message"
+    echo -e "\t-i\tIterations, default 10"
+    echo -e "\t-n\tPretend run, print the commands without doing anything"
+    echo -e "\t-r\tRuntime benchmark configuration, valid options are {base, c18n, revoke}"
+    echo -e "\t-v\tBuild variant of the nginx server to run, this must match the package flavor"
+
     exit 1
 }
 
@@ -111,12 +114,19 @@ function run_wrk_one()
     local iteration=${1}
     local name=${2}
     local fullname="${name}"
+    local wrk_args=""
 
     if [ -z "${PERSISTENT_WORKERS}" ]; then
         start_nginx
     fi
+    if [ -n "${WRK_MSGLIMIT}" ]; then
+        wrk_args="-s ${CURDIR}/wrk-msglimit-report.lua"
+    else
+        wrk_args="-d 1m -s ${CURDIR}/wrk-report.lua"
+    fi
+        wrk_script="wrk-report.lua"
 
-    ${X} wrk -t 1 -c 50 -d 1m -s "${CURDIR}/wrk-report.lua" "https://localhost:10443/rps/${fullname}"
+    ${X} wrk -t 1 -c 50 ${wrk_args} "https://localhost:10443/rps/${fullname}"
     ${X} mv wrk-result.json "${NGINX_RESULTS_DIR}/result_${name}.${iteration}.json"
 
     if [ -z "${PERSISTENT_WORKERS}" ]; then
@@ -148,6 +158,9 @@ while getopts ${OPTSTRING} opt; do
             ;;
         r)
             NGINX_EXPERIMENT=${OPTARG}
+            ;;
+        f)
+            WRK_MSGLIMIT=1
             ;;
         i)
             NGINX_ITERATIONS=${OPTARG}
