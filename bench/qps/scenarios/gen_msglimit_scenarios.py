@@ -30,6 +30,9 @@ def gen_scenario(path: Path):
 def main():
     curdir = Path.cwd()
     for name in curdir.iterdir():
+        if name.stem.endswith("_msglimit"):
+            # Skip generated files
+            continue
         if name.suffix == ".json":
             gen_scenario(name)
 
