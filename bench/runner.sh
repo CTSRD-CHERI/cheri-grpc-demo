@@ -11,7 +11,7 @@ ROOTFS_DIR=
 POUDRIERE_CONF=/usr/local/etc/poudriere.d
 CURDIR=$(readlink -f $(dirname "$0"))
 
-OPTSTRING=":w:p:P:nx:R:cCi:fg:a:v:r:"
+OPTSTRING=":w:p:P:nx:R:cCi:fg:a:v:r:j:J:"
 X=
 STEP=
 POUDRIERE_CLEAN=
@@ -22,6 +22,8 @@ RUNTIMES=(base c18n c18n_policy revoke)
 ITERATIONS=
 SCENARIO_GROUP=
 FIXED_WORKLOAD=
+HWPMC_SAMPLING=
+HWPMC_COUNTING=
 
 HELP_ABIS="${ABIS[@]}"
 HELP_ABIS="${HELP_ABIS// /, }"
@@ -35,12 +37,14 @@ function usage()
     echo "$0 - Setup the jails and build packages for the Morello gRPC qps benchmark"
     echo "Options":
     echo -e "\t-a\tOverride the target ABI (${HELP_ABIS})"
-    echo -e "\t-c\tClean the grpc-qps package in jails build but not dependencies"
+    echo -e "\t-c\tClean the target package in jails build but not dependencies"
     echo -e "\t-C\tClean all the packages when building"
     echo -e "\t-f\tUse a fixed-size workload instead of fixed-time"
     echo -e "\t-g\tQPS scenario group (default see qps/run.sh)"
     echo -e "\t-h\tShow help message"
     echo -e "\t-i\tBenchmark iterations to run (default see qps/run.sh)"
+    echo -e "\t-j\tEnable hwpmc profiling in sampling mode every <arg> instructions"
+    echo -e "\t-J\tEnable hwpmc counters in the given group (inst, cheri)"
     echo -e "\t-n\tPretend run, print the commands without doing anything"
     echo -e "\t-p\tPorts tree name, default ${PORTS_NAME}"
     echo -e "\t-P\tPath to the ports tree, default ${PORTS_PATH}"
@@ -54,81 +58,106 @@ function usage()
     exit 1
 }
 
-while getopts ${OPTSTRING} opt; do
-    case ${opt} in
-        w)
-            WORKSPACE=${OPTARG}
-            if [ -z "${ROOTFS_DIR}" ]; then
-                ROOTFS_DIR=${WORKSPACE}
-            fi
-            ;;
-        h)
-            usage
-            ;;
-        p)
-            PORTS_NAME=${OPTARG}
-            ;;
-        P)
-            PORTS_PATH=${OPTARG}
-            ;;
-        R)
-            ROOTFS_DIR=${OPTARG}
-            ;;
-        n)
-            X="echo"
-            ;;
-        x)
-            STEP=${OPTARG}
-            ;;
-        c)
-            POUDRIERE_CLEAN="-C"
-            ;;
-        C)
-            POUDRIERE_CLEAN="-c"
-            ;;
-        i)
-            ITERATIONS=${OPTARG}
-            ;;
-        f)
-            FIXED_WORKLOAD=1
-            ;;
-        g)
-            SCENARIO_GROUP=${OPTARG}
-            ;;
-        a)
-            if [[ ${ABIS[@]} =~ ${OPTARG} ]]; then
-                ABIS=(${OPTARG})
+args=`getopt ${OPTSTRING} $*`
+if [ $? -ne 0 ]; then
+    usage
+fi
+set -- $args
+
+while :; do
+    option="$1"
+    shift
+    optvalue="$1"
+    case "${option}" in
+        -a)
+            if [[ ${ABIS[@]} =~ ${optvalue} ]]; then
+                ABIS=(${optvalue})
             else
                 echo "Invalid -a option, must be one of ${ABIS[@]}"
                 usage
             fi
+            shift
             ;;
-        v)
-            if [[ ${VARIANTS[@]} =~ ${OPTARG} ]]; then
-                VARIANTS=(${OPTARG})
-            else
-                echo "Invalid -v option, must be one of ${VARIANTS[@]}"
-                usage
-            fi
+        -c)
+            POUDRIERE_CLEAN="-C"
             ;;
-        r)
-            if [[ ${RUNTIMES[@]} =~ ${OPTARG} ]]; then
-                RUNTIMES=(${OPTARG})
+        -C)
+            POUDRIERE_CLEAN="-c"
+            ;;
+        -f)
+            FIXED_WORKLOAD=1
+            ;;
+        -g)
+            SCENARIO_GROUP=${optvalue}
+            shift
+            ;;
+        -h)
+            usage
+            ;;
+        -i)
+            ITERATIONS=${optvalue}
+            shift
+            ;;
+        -j)
+            HWPMC_SAMPLING=${optvalue}
+            shift
+            ;;
+        -J)
+            HWPMC_COUNTING=${optvalue}
+            shift
+            ;;
+        -n)
+            X="echo"
+            ;;
+        -p)
+            PORTS_NAME=${optvalue}
+            shift
+            ;;
+        -P)
+            PORTS_PATH=${optvalue}
+            shift
+            ;;
+        -r)
+            if [[ ${RUNTIMES[@]} =~ ${optvalue} ]]; then
+                RUNTIMES=(${optvalue})
             else
                 echo "Invalid -r option, must be one of ${RUNTIMES[@]}"
                 usage
             fi
+            shift
             ;;
-        :)
-            echo "Option -${OPTARG} requires an argument"
-            usage
+        -R)
+            ROOTFS_DIR=${optvalue}
+            shift
             ;;
-        ?)
-            echo "Invalid option -${OPTARG}"
-            usage
+        -v)
+            if [[ ${VARIANTS[@]} =~ ${optvalue} ]]; then
+                VARIANTS=(${optvalue})
+            else
+                echo "Invalid -v option, must be one of ${VARIANTS[@]}"
+                usage
+            fi
+            shift
+            ;;
+        -w)
+            WORKSPACE=${optvalue}
+            if [ -z "${ROOTFS_DIR}" ]; then
+                ROOTFS_DIR=${WORKSPACE}
+            fi
+            shift
+            ;;
+        -x)
+            STEP=${optvalue}
+            shift
+            ;;
+        --)
+            break
             ;;
     esac
 done
+
+# while getopts ${OPTSTRING} opt; do
+# done
 
 echo "$0 configuration:"
 echo "WORKSPACE=${WORKSPACE}"
@@ -167,6 +196,28 @@ function abi_to_port_set()
             exit 1
     esac
     echo ${port_set}
+}
+
+# Generate a list of hwpmc names for pmcstat given a group name
+# $1 => counter group
+function hwpmc_counters()
+{
+    local group=${1}
+
+    case ${group} in
+        inst)
+            echo "INST_RETIRED,CPU_CYCLES"
+            ;;
+        cheri)
+            echo "CPU_CYCLES,INST_RETIRED,BUS_ACCESS,L1D_CACHE_REFILL,L1D_CACHE," \
+                 "L1D_CACHE_WB_VICTIM,L2D_CACHE_REFILL,L2D_CACHE,L2D_CACHE_WB_VICTIM" \
+                 "BR_MIS_PRED_RS,EXECUTIVE_ENTRY,EXECUTIVE_EXIT,INST_SPEC_RESTRICTED"
+            ;;
+        *)
+            # Override hwpmc counter group, use ${group}
+            echo "${group}"
+            ;;
+    esac
 }
 
 # Generate jail name
@@ -400,6 +451,13 @@ function run_jail()
     if [ "${FIXED_WORKLOAD}" == "1" ]; then
         extra_args+=" -f"
     fi
+    if [ -n "${HWPMC_SAMPLING}" ]; then
+        extra_args+=" -j ${HWPMC_SAMPLING}"
+    fi
+    if [ -n "${HWPMC_COUNTING}" ]; then
+        local counters=`hwpmc_counters ${HWPMC_COUNTING}`
+        extra_args+=" -J ${counters}"
+    fi
     ${X} jexec "${jail_execname}" /bin/csh -c "${exec_script} ${extra_args}"
     ${X} poudriere jail -k -j "${name}" -p "${PORTS_NAME}" -z "${port_set}"
 }
@@ -408,12 +466,20 @@ function run_jail()
 # $1 => benchmark name (qps, nginx)
 function run_benchmark()
 {
-    bench="${1}"
+    local bench="${1}"
 
-    revoke_ctl=$(sysctl -n security.cheri.runtime_revocation_default)
+    local revoke_ctl=$(sysctl -n security.cheri.runtime_revocation_default)
     if [ "${revoke_ctl}" == "1" ]; then
         echo "Default revocation is enabled, switch it off for the benchmark"
         ${X} sysctl security.cheri.runtime_revocation_default=0
+    fi
+
+    if [ -n "${HWPMC_SAMPLING}" ] || [ -n "${HWPMC_COUNTING}" ]; then
+        local has_hwpmc=`kldstat | grep hwpmc`
+        if [ -z "${has_hwpmc}" ]; then
+            echo "Missing hwpmc kernel module, try to load"
+            ${X} kldload hwpmc
+        fi
     fi
 
     if [ -z "${QPS_SKIP_KERNEL_CHECK}" ]; then
@@ -426,7 +492,7 @@ function run_benchmark()
 
     # Note that some gRPC tests can spawn a lot of threads
     # Increment the thread per proc limit
-    thr_limit=$(sysctl -n kern.threads.max_threads_per_proc)
+    local thr_limit=$(sysctl -n kern.threads.max_threads_per_proc)
     if (( ${thr_limit} < 5000 )); then
         echo "WARNING: Detected low max_threads_per_proc limit, increasing to 5k"
         ${X} sysctl kern.threads.max_threads_per_proc=5000

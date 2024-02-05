@@ -20,8 +20,11 @@ C18N_INTERP=
 C18N_POLICY=
 RTLD_ENV_PREFIX=
 PERSISTENT_WORKERS=
+HWPMC_SAMPLING=
+HWPMC_COUNTING=
+HWPMC_COMMAND=
 
-OPTSTRING="na:r:i:fg:dv:"
+OPTSTRING="na:r:i:fg:dv:j:J:"
 X=
 
 function usage()
@@ -34,6 +37,8 @@ function usage()
     echo -e "\t-g\tBenchmark group, one of async,async_tls,async_pp,sync,sync_tls,sync_pp"
     echo -e "\t-h\tShow help message"
     echo -e "\t-i\tIterations, default 10"
+    echo -e "\t-j\tEnable hwpmc profiling in sampling mode at the given rate"
+    echo -e "\t-J\tEnable the given counters for hwpmc profiling in counting mode"
     echo -e "\t-n\tPretend run, print the commands without doing anything"
     echo -e "\t-r\tRuntime benchmark configuration, valid options are c18n, revoke"
     echo -e "\t-v\tBuild variant of the QPS benchmark to run, this must match the package flavor"
@@ -41,19 +46,46 @@ function usage()
     exit 1
 }
 
+# $1 => unique name for this iteration within the results dir, used for pmcstat files
 function start_workers()
 {
+    local pmcname="${1}"
     local envcmd=""
+    local hwpmc_cmd="${HWPMC_COMMAND}"
 
     if [ -n "${C18N_POLICY}" ]; then
         envcmd="env ${RTLD_ENV_PREFIX}PRELOAD=${C18N_POLICY}"
     fi
 
+    if [ -n "${HWPMC_SAMPLING}" ]; then
+        hwpmc_cmd+=" -O ${QPS_RESULTS_DIR}/${pmcname}.pmc.stat"
+    fi
+    if [ -n "${HWPMC_COUNTING}" ]; then
+        hwpmc_cmd+=" -o ${QPS_RESULTS_DIR}/${pmcname}.pmc.txt"
+    fi
+
+    # Note that the server worker will always be the last one.
+    # The qps driver allocates first servers, than clients, however
+    # the QPS_WORKERS env var is reversed when parsing.
+
     echo "Start qps workers..."
-    ${X} ${envcmd} grpc_qps_worker --driver_port=${W0_PORT} &
-    WORKER0_PID=$!
-    ${X} ${envcmd} grpc_qps_worker --driver_port=${W1_PORT} &
-    WORKER1_PID=$!
+    if [ -z "${X}" ]; then
+        ${envcmd} grpc_qps_worker --driver_port=${W0_PORT} &
+        WORKER0_PID=$!
+        ${envcmd} grpc_qps_worker --driver_port=${W1_PORT} &
+        WORKER1_PID=$!
+    else
+        # Run in pretend mode
+        echo "${envcmd} grpc_qps_worker --driver_port=${W0_PORT}"
+        WORKER0_PID="<WORKER0_PID>"
+        echo "${envcmd} ${hwpmc_cmd} grpc_qps_worker --driver_port=${W1_PORT}"
+        WORKER1_PID="<WORKER1_PID>"
+    fi
+    if [ -n "${HWPMC_COMMAND}" ]; then
+        ${X} ${hwpmc_cmd} -t ${WORKER1_PID} &
+        HWPMC_PID=$!
+    fi
+
     export QPS_WORKERS=localhost:${W0_PORT},localhost:${W1_PORT}
     # Wait for the workers to settle a bit before starting
     ${X} sleep 1
@@ -62,22 +94,37 @@ function start_workers()
     echo "Worker 1: PID ${WORKER1_PID}"
 }
 
+# $1 => unique name for this iteration within the results dir, used for pmcstat files
 function stop_workers()
 {
-    ${X} kill ${WORKER0_PID}
-    ${X} kill ${WORKER1_PID}
+    local pmcname="${1}"
+
+    ${X} kill -TERM ${WORKER0_PID}
+    ${X} kill -TERM ${WORKER1_PID}
+
+    if [ -n "${HWPMC_COMMAND}" ]; then
+        ${X} pwait ${HWPMC_PID}
+    fi
+
+    if [ -n "${HWPMC_SAMPLING}" ]; then
+        # Dump the pmcstats to the correct file
+        # Should we do this after everything to limit noise between iterations?
+        ${X} pmcstat -R "${QPS_RESULTS_DIR}/${pmcname}.pmc.stat -G " \
+             "${QPS_RESULTS_DIR}/${pmcname}.pmc.stacks"
+    fi
 }
 
 # $1 => iteration number
 # $2 => scenario name
 function run_qps()
 {
-    iteration=${1}
-    name=${2}
-    fullname="${QPS_SCENARIO_PREFIX}${name}.json"
+    local iteration=${1}
+    local name=${2}
+    local fullname="${QPS_SCENARIO_PREFIX}${name}.json"
+    local pmcname="${name}.${iteration}"
 
     if [ -z "${PERSISTENT_WORKERS}" ]; then
-        start_workers
+        start_workers ${pmcname}
     fi
 
     ${X} grpc_qps_json_driver \
@@ -85,7 +132,7 @@ function run_qps()
         --scenario_result_file "${QPS_RESULTS_DIR}/summary_${name}.${iteration}.json"
 
     if [ -z "${PERSISTENT_WORKERS}" ]; then
-        stop_workers
+        stop_workers ${pmcname}
     fi
 }
 
@@ -107,6 +154,7 @@ while getopts ${OPTSTRING} opt; do
             ;;
         n)
             X="echo"
+            BACKGROUND=""
             ;;
         a)
             QPS_PACKAGE_ABI=${OPTARG}
@@ -122,6 +170,12 @@ while getopts ${OPTSTRING} opt; do
             ;;
         g)
             QPS_SCENARIO_GROUP=${OPTARG}
+            ;;
+        j)
+            HWPMC_SAMPLING=${OPTARG}
+            ;;
+        J)
+            HWPMC_COUNTING=${OPTARG}
             ;;
         d)
             PERSISTENT_WORKERS=1
@@ -141,6 +195,19 @@ while getopts ${OPTSTRING} opt; do
         ;;
     esac
 done
+
+if [ -n "${HWPMC_SAMPLING}" ] || [ -n "${HWPMC_COUNTING}" ]; then
+    pmc_args=""
+    if [ -n "${HWPMC_SAMPLING}" ]; then
+        pmc_args+=" -P INST_RETIRED -n ${HWPMC_SAMPLING}"
+    fi
+    if [ -n "${HWPMC_COUNTING}" ]; then
+        for pmc in `echo ${HWPMC_COUNTING} | tr "," "\n"`; do
+            pmc_args+=" -p ${pmc}"
+        done
+    fi
+    HWPMC_COMMAND="pmcstat ${pmc_args}"
+fi
 
 echo "=== QPS run configuration ==="
 
