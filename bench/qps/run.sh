@@ -12,6 +12,7 @@ QPS_PACKAGE_ABI=invalid
 QPS_EXPERIMENT=base
 QPS_ITERATIONS=10
 QPS_SCENARIO_GROUP=async
+QPS_SCENARIO_SUFFIX=
 # Assume that the QPS benchmark data and scripts are mounted at /root/qps
 CURDIR="/root/qps"
 
@@ -20,21 +21,23 @@ C18N_POLICY=
 RTLD_ENV_PREFIX=
 PERSISTENT_WORKERS=
 
-OPTSTRING="na:r:i:g:dv:"
+OPTSTRING="na:r:i:fg:dv:"
 X=
 
 function usage()
 {
     echo "$0 - Run the Morello gRPC qps benchmark"
     echo "Options":
-    echo -e "\t-h\tShow help message"
-    echo -e "\t-n\tPretend run, print the commands without doing anything"
     echo -e "\t-a\tABI of the QPS benchmark to run, this must match the installed package abi"
-    echo -e "\t-v\tBuild variant of the QPS benchmark to run, this must match the package flavor"
-    echo -e "\t-r\tRuntime benchmark configuration, valid options are c18n, revoke"
-    echo -e "\t-i\tIterations, default 10"
-    echo -e "\t-g\tBenchmark group, one of async,async_tls,async_pp,sync,sync_tls,sync_pp"
     echo -e "\t-d\tDo not respawn qps workers for each iteration"
+    echo -e "\t-f\tUse fixed-size workload instead of fixed-time"
+    echo -e "\t-g\tBenchmark group, one of async,async_tls,async_pp,sync,sync_tls,sync_pp"
+    echo -e "\t-h\tShow help message"
+    echo -e "\t-i\tIterations, default 10"
+    echo -e "\t-n\tPretend run, print the commands without doing anything"
+    echo -e "\t-r\tRuntime benchmark configuration, valid options are c18n, revoke"
+    echo -e "\t-v\tBuild variant of the QPS benchmark to run, this must match the package flavor"
+
     exit 1
 }
 
@@ -114,6 +117,9 @@ while getopts ${OPTSTRING} opt; do
         i)
             QPS_ITERATIONS=${OPTARG}
             ;;
+        f)
+            QPS_SCENARIO_SUFFIX="_msglimit"
+            ;;
         g)
             QPS_SCENARIO_GROUP=${OPTARG}
             ;;
@@ -167,7 +173,8 @@ case "${QPS_PACKAGE_ABI}" in
 esac
 
 QPS_PACKAGE="grpc-qps${QPS_PACKAGE_FLAVOR}-1.54.2,2.pkg"
-QPS_SCENARIOS="${PREFIX}/share/grpc-qps/scenarios"
+# QPS_SCENARIOS="${PREFIX}/share/grpc-qps/scenarios"
+QPS_SCENARIOS="${CURDIR}/scenarios"
 QPS_RESULTS_DIR="/root/results/${QPS_EXPERIMENT}"
 
 QPS_SCENARIO_PREFIX=scenario_dump_cpp_
@@ -246,6 +253,10 @@ case "${QPS_SCENARIO_GROUP}" in
         exit 1
 esac
 
+for idx in ${!QPS_SCENARIO_LIST[@]}; do
+    QPS_SCENARIO_LIST[idx]="${QPS_SCENARIO_LIST[idx]}${QPS_SCENARIO_SUFFIX}"
+done
+
 if [ "$default_revoke" == "1" ]; then
     echo "ERROR: Runtime revocation is enabled by default, disable now"
     exit 1
@@ -268,6 +279,8 @@ case "${QPS_EXPERIMENT}" in
         if [ "${QPS_EXPERIMENT}" == "c18n_policy" ]; then
             C18N_POLICY="${CURDIR}/policy.so"
         fi
+
+        RTLD_ENV_PREFIX+="C18N_"
         ;;
     revoke)
         echo "Patch QPS to enable revocation"

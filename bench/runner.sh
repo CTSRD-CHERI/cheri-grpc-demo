@@ -11,7 +11,7 @@ ROOTFS_DIR=
 POUDRIERE_CONF=/usr/local/etc/poudriere.d
 CURDIR=$(readlink -f $(dirname "$0"))
 
-OPTSTRING=":w:p:P:nx:R:cCi:g:a:v:r:"
+OPTSTRING=":w:p:P:nx:R:cCi:fg:a:v:r:"
 X=
 STEP=
 POUDRIERE_CLEAN=
@@ -21,6 +21,7 @@ VARIANTS=(base stackzero subobj)
 RUNTIMES=(base c18n c18n_policy revoke)
 ITERATIONS=
 SCENARIO_GROUP=
+FIXED_WORKLOAD=
 
 HELP_ABIS="${ABIS[@]}"
 HELP_ABIS="${HELP_ABIS// /, }"
@@ -33,21 +34,23 @@ function usage()
 {
     echo "$0 - Setup the jails and build packages for the Morello gRPC qps benchmark"
     echo "Options":
-    echo -e "\t-h\tShow help message"
-    echo -e "\t-w\tWorkspace where results are stored, default ${WORKSPACE}"
-    echo -e "\t-r\tPath to the directory containing rootfs for the jails, default ${WORKSPACE}"
-    echo -e "\t-p\tPorts tree name, default ${PORTS_NAME}"
-    echo -e "\t-P\tPath to the ports tree, default ${PORTS_PATH}"
-    echo -e "\t-n\tPretend run, print the commands without doing anything"
-    echo -e "\t-x\tExecute given step, valid values are {setup, qps-packages, " \
-         "nginx-packages, qps, nginx}"
+    echo -e "\t-a\tOverride the target ABI (${HELP_ABIS})"
     echo -e "\t-c\tClean the grpc-qps package in jails build but not dependencies"
     echo -e "\t-C\tClean all the packages when building"
-    echo -e "\t-i\tBenchmark iterations to run (default see qps/run.sh)"
+    echo -e "\t-f\tUse a fixed-size workload instead of fixed-time"
     echo -e "\t-g\tQPS scenario group (default see qps/run.sh)"
-    echo -e "\t-a\tOverride the target ABI (${HELP_ABIS})"
-    echo -e "\t-v\tOverride the compilation mode variant (${HELP_VARIANTS})"
+    echo -e "\t-h\tShow help message"
+    echo -e "\t-i\tBenchmark iterations to run (default see qps/run.sh)"
+    echo -e "\t-n\tPretend run, print the commands without doing anything"
+    echo -e "\t-p\tPorts tree name, default ${PORTS_NAME}"
+    echo -e "\t-P\tPath to the ports tree, default ${PORTS_PATH}"
     echo -e "\t-r\tOverride the run-time configuration (${HELP_RT})"
+    echo -e "\t-R\tPath to the directory containing rootfs for the jails, default ${WORKSPACE}"
+    echo -e "\t-v\tOverride the compilation mode variant (${HELP_VARIANTS})"
+    echo -e "\t-w\tWorkspace where results are stored, default ${WORKSPACE}"
+    echo -e "\t-x\tExecute given step, valid values are {setup, qps-packages, " \
+         "nginx-packages, qps, nginx}"
+
     exit 1
 }
 
@@ -85,6 +88,9 @@ while getopts ${OPTSTRING} opt; do
             ;;
         i)
             ITERATIONS=${OPTARG}
+            ;;
+        f)
+            FIXED_WORKLOAD=1
             ;;
         g)
             SCENARIO_GROUP=${OPTARG}
@@ -390,6 +396,9 @@ function run_jail()
     fi
     if [ ! -z "${SCENARIO_GROUP}" ]; then
         extra_args+=" -g ${SCENARIO_GROUP}"
+    fi
+    if [ "${FIXED_WORKLOAD}" == "1" ]; then
+        extra_args+=" -f"
     fi
     ${X} jexec "${jail_execname}" /bin/csh -c "${exec_script} ${extra_args}"
     ${X} poudriere jail -k -j "${name}" -p "${PORTS_NAME}" -z "${port_set}"
