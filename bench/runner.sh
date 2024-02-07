@@ -52,7 +52,7 @@ function usage()
     echo -e "\t-R\tPath to the directory containing rootfs for the jails, default ${WORKSPACE}"
     echo -e "\t-v\tOverride the compilation mode variant (${HELP_VARIANTS})"
     echo -e "\t-w\tWorkspace where results are stored, default ${WORKSPACE}"
-    echo -e "\t-x\tExecute given step, valid values are {setup, qps-packages, " \
+    echo -e "\t-x\tExecute given step, valid values are {setup, clean, qps-packages, " \
          "nginx-packages, qps, nginx}"
 
     exit 1
@@ -229,10 +229,16 @@ function jailname()
     echo "${JAIL_PREFIX}${1}-${2}"
 }
 
-# Wipe all jails we created as well as the ports tree
+# Wipe all jails we created
 function wipe()
 {
-    echo "TODO"
+    for abi in ${ABIS[@]}; do
+        for variant in ${VARIANTS[@]}; do
+            name=`jailname ${abi} ${variant}`
+            echo "Drop jail ${name}"
+            ${X} poudriere jail -d -j "${name}"
+        done
+    done
 }
 
 # $1 => tree name
@@ -524,6 +530,8 @@ function run_benchmark()
 
 if [ "$STEP" == "setup" ]; then
     setup
+elif [ "$STEP" == "clean" ]; then
+    wipe
 elif [ "$STEP" == "qps-packages" ]; then
     build_qps
 elif [ "$STEP" == "qps" ]; then
