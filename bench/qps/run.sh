@@ -54,7 +54,7 @@ function start_workers()
     local hwpmc_cmd="${HWPMC_COMMAND}"
 
     if [ -n "${C18N_POLICY}" ]; then
-        envcmd="env ${RTLD_ENV_PREFIX}PRELOAD=${C18N_POLICY}"
+        envcmd="env ${RTLD_ENV_PREFIX}COMPARTMENT_POLICY=${C18N_POLICY}"
     fi
 
     if [ -n "${HWPMC_SAMPLING}" ]; then
