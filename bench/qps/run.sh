@@ -344,7 +344,7 @@ case "${QPS_EXPERIMENT}" in
         ${X} patchelf --set-interpreter "${C18N_INTERP}" "${PREFIX}/bin/grpc_qps_worker"
 
         if [ "${QPS_EXPERIMENT}" == "c18n_policy" ]; then
-            C18N_POLICY="${CURDIR}/policy.so"
+            C18N_POLICY="${CURDIR}/policy.txt"
         fi
 
         RTLD_ENV_PREFIX+="C18N_"
