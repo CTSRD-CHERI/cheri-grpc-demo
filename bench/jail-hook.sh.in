@@ -1,15 +1,17 @@
 #!/bin/sh
 
-BENCHMARK_RESULT_PATH="QPS_WORKSPACE/results"
-BENCHMARK_QPS_SCRIPTS_PATH="QPS_SCRIPTS"
-BENCHMARK_NGINX_SCRIPTS_PATH="NGINX_SCRIPTS"
+BENCHMARK_RESULT_PATH="__QPS_WORKSPACE/results"
+BENCHMARK_QPS_SCRIPTS_PATH="__QPS_SCRIPTS"
+BENCHMARK_NGINX_SCRIPTS_PATH="__NGINX_SCRIPTS"
+HYBRID_JAIL_NAME="__HYBRID_JAIL_NAME"
+HYBRID_JAIL_PKG="${POUDRIERE_DATA}/packages/${HYBRID_JAIL_NAME}-${PTNAME}-hybridabi"
 
 event="${1}"
 
 case "${event}" in
 mount)
 	mntpath="${2}"
-    respath="${BENCHMARK_RESULT_PATH}/${JAILNAME}"
+    respath="${BENCHMARK_RESULT_PATH}"
 
     mkdir -p "${respath}"
     echo "Mounting QPS benchmark directories"
@@ -18,6 +20,21 @@ mount)
     mount -r -t nullfs -o rw "${respath}" "${mntpath}/root/results"
     mount -r -t nullfs -o ro "${BENCHMARK_QPS_SCRIPTS_PATH}" "${mntpath}/root/qps"
     mount -r -t nullfs -o ro "${BENCHMARK_NGINX_SCRIPTS_PATH}" "${mntpath}/root/nginx"
+
+    if [ "${SETNAME}" != "hybridabi" ]; then
+	echo "Mouting the hybrid packages"
+	mkdir -p "${mntpath}/packages64"
+	mount -t nullfs -o ro "${HYBRID_JAIL_PKG}" "${mntpath}/packages64"
+    fi
+
+    # Fixup the kernel binaries
+    for kern in $(ls /boot | grep kernel); do
+	if [ ! -d "${mntpath}/boot/${kern}" ]; then
+	    echo "Fixup kernel dir ${kern} => ${mntpath}/boot/${kern}"
+	    mkdir -p "${mntpath}/boot/${kern}"
+	    mount -t nullfs -o ro "/boot/${kern}" "${mntpath}/boot/${kern}"
+	fi
+    done
 	;;
 start)
 	;;

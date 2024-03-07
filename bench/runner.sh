@@ -11,19 +11,22 @@ ROOTFS_DIR=
 POUDRIERE_CONF=/usr/local/etc/poudriere.d
 CURDIR=$(readlink -f $(dirname "$0"))
 
-OPTSTRING=":w:p:P:nx:R:cCi:fg:a:v:r:j:J:"
+OPTSTRING=":w:p:P:nx:R:cCi:f:g:a:v:r:j:J:Vo:"
 X=
 STEP=
 POUDRIERE_CLEAN=
 
 ABIS=(hybrid purecap benchmark)
 VARIANTS=(base stackzero subobj)
-RUNTIMES=(base c18n c18n_policy revoke)
+#RUNTIMES=(base c18n c18n_policy revoke)
+RUNTIMES=(base c18n c18n_policy c18n_ipc)
 ITERATIONS=
 SCENARIO_GROUP=
 FIXED_WORKLOAD=
 HWPMC_SAMPLING=
 HWPMC_COUNTING=
+DEBUG_MODE=
+OUTPUT_DIR="results"
 
 HELP_ABIS="${ABIS[@]}"
 HELP_ABIS="${HELP_ABIS// /, }"
@@ -39,18 +42,20 @@ function usage()
     echo -e "\t-a\tOverride the target ABI (${HELP_ABIS})"
     echo -e "\t-c\tClean the target package in jails build but not dependencies"
     echo -e "\t-C\tClean all the packages when building"
-    echo -e "\t-f\tUse a fixed-size workload instead of fixed-time"
+    echo -e "\t-f\tUse a fixed-size workload instead of fixed-time, speciy the suffix for the scenario file"
     echo -e "\t-g\tQPS scenario group (default see qps/run.sh)"
     echo -e "\t-h\tShow help message"
     echo -e "\t-i\tBenchmark iterations to run (default see qps/run.sh)"
     echo -e "\t-j\tEnable hwpmc profiling in sampling mode every <arg> instructions"
     echo -e "\t-J\tEnable hwpmc counters in the given group (inst, cheri)"
     echo -e "\t-n\tPretend run, print the commands without doing anything"
+    echo -e "\t-o\tName of the result directory, defaults to results"
     echo -e "\t-p\tPorts tree name, default ${PORTS_NAME}"
     echo -e "\t-P\tPath to the ports tree, default ${PORTS_PATH}"
     echo -e "\t-r\tOverride the run-time configuration (${HELP_RT})"
     echo -e "\t-R\tPath to the directory containing rootfs for the jails, default ${WORKSPACE}"
     echo -e "\t-v\tOverride the compilation mode variant (${HELP_VARIANTS})"
+    echo -e "\t-V\tEnable verbose diagnostics"
     echo -e "\t-w\tWorkspace where results are stored, default ${WORKSPACE}"
     echo -e "\t-x\tExecute given step, valid values are {setup, clean, qps-packages, " \
          "nginx-packages, qps, nginx}"
@@ -85,7 +90,7 @@ while :; do
             POUDRIERE_CLEAN="-c"
             ;;
         -f)
-            FIXED_WORKLOAD=1
+            FIXED_WORKLOAD=${optvalue}
             ;;
         -g)
             SCENARIO_GROUP=${optvalue}
@@ -108,6 +113,9 @@ while :; do
             ;;
         -n)
             X="echo"
+            ;;
+        -o)
+            OUTPUT_DIR=${optvalue}
             ;;
         -p)
             PORTS_NAME=${optvalue}
@@ -138,6 +146,9 @@ while :; do
                 usage
             fi
             shift
+            ;;
+        -V)
+            DEBUG_MODE=1
             ;;
         -w)
             WORKSPACE=${optvalue}
@@ -179,11 +190,18 @@ function write_to()
 
 # Get the poudriere port setname for a given abi
 # $1 => abi name (hybridabi, cheriabi, benchmarkabi)
+# $2 => "run" if we are running the jail, "build" if we are building packages
 function abi_to_port_set()
 {
+    local run_or_build=${2}
+
     case ${1} in
         hybrid)
-            port_set="hybridabi"
+            if [ "${run_or_build}" = "run" ]; then
+                port_set="cheriabi"
+            else
+                port_set="hybridabi"
+            fi
             ;;
         purecap)
             port_set="cheriabi"
@@ -208,10 +226,11 @@ function hwpmc_counters()
         inst)
             echo "INST_RETIRED,CPU_CYCLES"
             ;;
-        cheri)
-            echo "CPU_CYCLES,INST_RETIRED,INST_SPEC,BUS_ACCESS,L1D_CACHE_REFILL,L1D_CACHE," \
-                 "L1D_CACHE_WB_VICTIM,L2D_CACHE_REFILL,L2D_CACHE,L2D_CACHE_WB_VICTIM" \
-                 "BR_MIS_PRED_RS,EXECUTIVE_ENTRY,EXECUTIVE_EXIT,INST_SPEC_RESTRICTED"
+        cache)
+            echo "CPU_CYCLES,INST_RETIRED,BUS_ACCESS,L1D_CACHE_REFILL,L1D_CACHE,L1D_CACHE_WB_VICTIM,L2D_CACHE_REFILL,L2D_CACHE,L2D_CACHE_WB_VICTIM"
+            ;;
+        spec)
+            echo "CPU_CYCLES,INST_RETIRED,INST_SPEC,BR_MIS_PRED_RS,EXECUTIVE_ENTRY,EXECUTIVE_EXIT,INST_SPEC_RESTRICTED"
             ;;
         *)
             # Override hwpmc counter group, use ${group}
@@ -220,13 +239,27 @@ function hwpmc_counters()
     esac
 }
 
-# Generate jail name
-# $1 => abi
-# $2 => variant
-# $3 => runtime
+# Generate jail name for benchmarking
+# Note that we use the purecap jail for hybrid runs as well
+# this addresses a limitation of pmcstat.
+# $1 => "run" or "build"
+# $2 => abi
+# $3 => variant
+# $4 => runtime
 function jailname()
 {
-    echo "${JAIL_PREFIX}${1}-${2}"
+    local run_or_build=${1}
+    local abi=${2}
+    local variant=${3}
+
+    if [ "${run_or_build}" = "build" ]; then
+        echo "${JAIL_PREFIX}${abi}-${variant}"
+    else
+        if [ "${abi}" = "hybrid" ]; then
+            abi="purecap"
+        fi
+        echo "${JAIL_PREFIX}${abi}-${variant}"
+    fi
 }
 
 # Wipe all jails we created
@@ -234,7 +267,7 @@ function wipe()
 {
     for abi in ${ABIS[@]}; do
         for variant in ${VARIANTS[@]}; do
-            name=`jailname ${abi} ${variant}`
+            name=`jailname build ${abi} ${variant}`
             echo "Drop jail ${name}"
             ${X} poudriere jail -d -j "${name}"
         done
@@ -256,6 +289,10 @@ function mkports()
 # $3 => jail runtime configuration
 function mkjail()
 {
+    local abi=${1}
+    local variant=${2}
+    local rt=${3}
+
     case ${1} in
         hybrid)
             arch="arm64.aarch64"
@@ -271,7 +308,7 @@ function mkjail()
             ;;
     esac
 
-    name="$(jailname ${1} ${2} ${3})"
+    name="$(jailname build ${abi} ${variant} ${rt})"
     if [ "$(poudriere jail -q -l | grep ${name})" = "" ]; then
         echo "Create jail ${name}"
         ${X} poudriere jail -c -j "${name}" -a ${arch} -o CheriBSD -v dev -m null -M "${mount}"
@@ -291,13 +328,13 @@ function buildpkg()
     variant=${3}
     rt=${4}
 
-    port_set=$(abi_to_port_set ${abi})
+    port_set=$(abi_to_port_set ${abi} "build")
     if [ "${variant}" == "stackzero" ]; then
         package="${package}@stackzero"
     elif [ "${variant}" == "subobj" ]; then
         package="${package}@subobj"
     fi
-    name="$(jailname ${abi} ${variant} ${rt})"
+    name="$(jailname build ${abi} ${variant} ${rt})"
     ${X} poudriere bulk -j "${name}" -p "${PORTS_NAME}" -z "${port_set}" \
          ${POUDRIERE_CLEAN} "${package}"
 }
@@ -383,11 +420,13 @@ function setup()
         done
     done
 
+    local hybrid_jail_name=`jailname build hybrid base base`
+
     # Install the poudriere jail hook to mount
     # ${WORKSPACE}/results into root/results
     # ${WORKSPACE}/qps into root/qps
     # ${WORKSPACE}/nginx into root/nginx
-    jail_hook="$(m4 -DQPS_WORKSPACE=${WORKSPACE} -DQPS_SCRIPTS=${CURDIR}/qps -DNGINX_SCRIPTS=${CURDIR}/nginx ${CURDIR}/jail-hook.sh.in)"
+    jail_hook="$(m4 -D__QPS_WORKSPACE=${WORKSPACE} -D__QPS_SCRIPTS=${CURDIR}/qps -D__NGINX_SCRIPTS=${CURDIR}/nginx -D__HYBRID_JAIL_NAME=${hybrid_jail_name} ${CURDIR}/jail-hook.sh.in)"
 
     write_to ${POUDRIERE_CONF}/hooks/jail.sh "${jail_hook}"
 }
@@ -437,8 +476,8 @@ function run_jail()
     bootstrap_script="/root/${bench}/bootstrap.sh ${abi}"
     exec_script="/root/${bench}/run.sh -a ${abi} -v ${variant} -r ${rt}"
 
-    name=$(jailname ${abi} ${variant} ${rt})
-    port_set=$(abi_to_port_set ${abi})
+    name=$(jailname run ${abi} ${variant} ${rt})
+    port_set=$(abi_to_port_set ${abi} "run")
     ${X} poudriere jail -s -j "${name}" -p "${PORTS_NAME}" -z "${port_set}"
     # Note that the -n suffix indicates the jail instance with network access
     jail_execname="${name}-${PORTS_NAME}-${port_set}-n"
@@ -454,8 +493,8 @@ function run_jail()
     if [ ! -z "${SCENARIO_GROUP}" ]; then
         extra_args+=" -g ${SCENARIO_GROUP}"
     fi
-    if [ "${FIXED_WORKLOAD}" == "1" ]; then
-        extra_args+=" -f"
+    if [ -n "${FIXED_WORKLOAD}" ]; then
+        extra_args+=" -f ${FIXED_WORKLOAD}"
     fi
     if [ -n "${HWPMC_SAMPLING}" ]; then
         extra_args+=" -j ${HWPMC_SAMPLING}"
@@ -463,6 +502,9 @@ function run_jail()
     if [ -n "${HWPMC_COUNTING}" ]; then
         local counters=`hwpmc_counters ${HWPMC_COUNTING}`
         extra_args+=" -J ${counters}"
+    fi
+    if [ -n "${DEBUG_MODE}" ]; then
+        extra_args+=" -V"
     fi
     ${X} jexec "${jail_execname}" /bin/csh -c "${exec_script} ${extra_args}"
     ${X} poudriere jail -k -j "${name}" -p "${PORTS_NAME}" -z "${port_set}"
@@ -526,6 +568,11 @@ function run_benchmark()
             done
         done
     done
+
+    if [ "${OUTPUT_DIR}" != "results" ]; then
+        ${X} mv ${WORKSPACE}/results "${WORKSPACE}/${OUTPUT_DIR}"
+        ${X} tar -Jcf "${WORKSPACE}/${OUTPUT_DIR}.tar.xz" "${WORKSPACE}/${OUTPUT_DIR}"
+    fi
 }
 
 if [ "$STEP" == "setup" ]; then

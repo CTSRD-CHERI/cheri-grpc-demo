@@ -14,11 +14,15 @@ NGINX_EXPERIMENT=base
 NGINX_ITERATIONS=10
 NGINX_PIDFILE="/var/run/nginx.pid"
 
+RTLD_ENV_PREFIX=
 C18N_INTERP=
 PERSISTENT_WORKERS=
 WRK_MSGLIMIT=
+HWPMC_SAMPLING=
+HWPMC_COUNTING=
+HWPMC_COMMAND=
 
-OPTSTRING="na:r:i:dv:f"
+OPTSTRING="na:r:i:dv:fj:J:V"
 X=
 
 function usage()
@@ -30,9 +34,12 @@ function usage()
     echo -e "\t-f\tUse fixed message limit"
     echo -e "\t-h\tShow help message"
     echo -e "\t-i\tIterations, default 10"
+    echo -e "\t-j\tEnable hwpmc profiling in sampling mode at the given rate"
+    echo -e "\t-J\tEnable the given counters for hwpmc profiling in counting mode"
     echo -e "\t-n\tPretend run, print the commands without doing anything"
-    echo -e "\t-r\tRuntime benchmark configuration, valid options are {base, c18n, revoke}"
+    echo -e "\t-r\tRuntime benchmark configuration, valid options are {base, c18n, c18n_ipc, revoke}"
     echo -e "\t-v\tBuild variant of the nginx server to run, this must match the package flavor"
+    echo -e "\t-V\tEnable verbose diagnostics output"
 
     exit 1
 }
@@ -77,8 +84,13 @@ function gen_ssl()
 
 function start_nginx()
 {
-    # ${X} service nginx onestart
-    ${X} ${NGINX_BINARY}
+    envcmd=""
+
+    if [ "${NGINX_EXPERIMENT}" == "c18n_ipc" ];
+       envcmd="env ${RTLD_ENV_PREFIX}COMPARTMENT_OVERHEAD=1"
+    fi
+
+    ${X} ${envcmd} ${NGINX_BINARY}
     if [ -z "${X}" ]; then
         if [ ! -f "${NGINX_PIDFILE}" ]; then
             echo "Failed to start nginx"
@@ -165,6 +177,12 @@ while getopts ${OPTSTRING} opt; do
         i)
             NGINX_ITERATIONS=${OPTARG}
             ;;
+        j)
+            HWPMC_SAMPLING=${OPTARG}
+            ;;
+        J)
+            HWPMC_COUNTING=${OPTARG}
+            ;;
         d)
             PERSISTENT_WORKERS=1
             ;;
@@ -172,6 +190,8 @@ while getopts ${OPTSTRING} opt; do
             if [ "${OPTARG}" != "base" ]; then
                 NGINX_PACKAGE_FLAVOR="-${OPTARG}"
             fi
+            ;;
+        V)
             ;;
         :)
             echo "Option -${OPTARG} requires an argument"
@@ -193,21 +213,24 @@ case "${NGINX_PACKAGE_ABI}" in
         ;;
     hybrid)
         PREFIX=/usr/local64
-        PKG=/usr/local64/sbin/pkg
+        PKG=pkg64
         NGINX_CONF=/root/nginx/nginx64.conf
         C18N_INTERP=
+        RTLD_ENV_PREFIX=
         ;;
     purecap)
         PREFIX=/usr/local
         PKG=pkg64c
         NGINX_CONF=/root/nginx/nginx.conf
         C18N_INTERP=/libexec/ld-elf-c18n.so.1
+        RTLD_ENV_PREFIX="LD_"
         ;;
     benchmark)
         PREFIX=/usr/local64cb
         PKG=pkg64cb
         NGINX_CONF=/root/nginx/nginx64cb.conf
         C18N_INTERP=/libexec/ld-elf64cb-c18n.so.1
+        RTLD_ENV_PREFIX="LD_64CB_"
         ;;
     *)
         echo "ERROR: invalid -a option, must be {hybrid, purecap, benchmark}"
@@ -215,7 +238,7 @@ case "${NGINX_PACKAGE_ABI}" in
 esac
 
 NGINX_PACKAGE="nginx${NGINX_PACKAGE_FLAVOR}-1.24.0_11,3.pkg"
-NGINX_RESULTS_DIR="/root/results/${NGINX_EXPERIMENT}"
+NGINX_RESULTS_DIR="/root/results/grpc-${NGINX_PACKAGE_ABI}${NGINX_PACKAGE_FLAVOR:=-base}/${NGINX_EXPERIMENT}"
 NGINX_SCENARIO_LIST=(random_0b random_512b random_1024b random_10240b random_102400b)
 
 echo "NGINX_PACKAGE:      ${NGINX_PACKAGE}"
@@ -232,7 +255,12 @@ if [ "$default_revoke" == "1" ]; then
 fi
 
 echo "=== Setup nginx packages ==="
-${X} env ASSUME_ALWAYS_YES=yes ${PKG} add /packages/All/${NGINX_PACKAGE}
+if [ "${NGINX_PACKAGE_ABI}" == "hybrid" ]; then
+    PKGDIR="/packages64"
+else
+    PKGDIR="/packages"
+fi
+${X} env ASSUME_ALWAYS_YES=yes ${PKG} add ${PKGDIR}/All/${NGINX_PACKAGE}
 ${X} env ASSUME_ALWAYS_YES=yes /usr/local64/sbin/pkg install wrk-luajit-openresty
 
 NGINX_BINARY="${PREFIX}/sbin/nginx"
@@ -240,7 +268,7 @@ NGINX_BINARY="${PREFIX}/sbin/nginx"
 case "${NGINX_EXPERIMENT}" in
     base)
         ;;
-    c18n)
+    c18n|c18n_ipc)
         if [ -z "${C18N_INTERP}" ]; then
            echo "ERROR: can not use -r c18n with -a hybrid"
            exit 1

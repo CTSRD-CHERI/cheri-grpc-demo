@@ -24,7 +24,7 @@ HWPMC_SAMPLING=
 HWPMC_COUNTING=
 HWPMC_COMMAND=
 
-OPTSTRING="na:r:i:fg:dv:j:J:"
+OPTSTRING="na:r:i:f:g:dv:j:J:V"
 X=
 
 function usage()
@@ -33,7 +33,7 @@ function usage()
     echo "Options":
     echo -e "\t-a\tABI of the QPS benchmark to run, this must match the installed package abi"
     echo -e "\t-d\tDo not respawn qps workers for each iteration"
-    echo -e "\t-f\tUse fixed-size workload instead of fixed-time"
+    echo -e "\t-f\tUse fixed-size workload instead of fixed-time, give the scenario suffix"
     echo -e "\t-g\tBenchmark group, one of async,async_tls,async_pp,sync,sync_tls,sync_pp"
     echo -e "\t-h\tShow help message"
     echo -e "\t-i\tIterations, default 10"
@@ -42,6 +42,7 @@ function usage()
     echo -e "\t-n\tPretend run, print the commands without doing anything"
     echo -e "\t-r\tRuntime benchmark configuration, valid options are c18n, revoke"
     echo -e "\t-v\tBuild variant of the QPS benchmark to run, this must match the package flavor"
+    echo -e "\t-V\tEnable verbose diagnostics output"
 
     exit 1
 }
@@ -55,6 +56,8 @@ function start_workers()
 
     if [ -n "${C18N_POLICY}" ]; then
         envcmd="env ${RTLD_ENV_PREFIX}COMPARTMENT_POLICY=${C18N_POLICY}"
+    elif [ "${QPS_EXPERIMENT}" == "c18n_ipc" ]; then
+        envcmd="env ${RTLD_ENV_PREFIX}COMPARTMENT_OVERHEAD=1"
     fi
 
     if [ -n "${HWPMC_SAMPLING}" ]; then
@@ -72,7 +75,7 @@ function start_workers()
     if [ -z "${X}" ]; then
         ${envcmd} grpc_qps_worker --driver_port=${W0_PORT} &
         WORKER0_PID=$!
-        ${envcmd} grpc_qps_worker --driver_port=${W1_PORT} &
+        ${envcmd} ${hwpmc_cmd} grpc_qps_worker --driver_port=${W1_PORT} &
         WORKER1_PID=$!
     else
         # Run in pretend mode
@@ -82,8 +85,7 @@ function start_workers()
         WORKER1_PID="<WORKER1_PID>"
     fi
     if [ -n "${HWPMC_COMMAND}" ]; then
-        ${X} ${hwpmc_cmd} -t ${WORKER1_PID} &
-        HWPMC_PID=$!
+        HWPMC_PID=${WORKER1_PID}
     fi
 
     export QPS_WORKERS=localhost:${W0_PORT},localhost:${W1_PORT}
@@ -99,8 +101,7 @@ function stop_workers()
 {
     local pmcname="${1}"
 
-    ${X} kill -TERM ${WORKER0_PID}
-    ${X} kill -TERM ${WORKER1_PID}
+    ${X} pkill -TERM grpc_qps_worker
 
     if [ -n "${HWPMC_COMMAND}" ]; then
         ${X} pwait ${HWPMC_PID}
@@ -109,8 +110,9 @@ function stop_workers()
     if [ -n "${HWPMC_SAMPLING}" ]; then
         # Dump the pmcstats to the correct file
         # Should we do this after everything to limit noise between iterations?
-        ${X} pmcstat -R "${QPS_RESULTS_DIR}/${pmcname}.pmc.stat -G " \
+        ${X} pmcstat -R "${QPS_RESULTS_DIR}/${pmcname}.pmc.stat" -G \
              "${QPS_RESULTS_DIR}/${pmcname}.pmc.stacks"
+        ${X} rm "${QPS_RESULTS_DIR}/${pmcname}.pmc.stat"
     fi
 }
 
@@ -120,7 +122,7 @@ function run_qps()
 {
     local iteration=${1}
     local name=${2}
-    local fullname="${QPS_SCENARIO_PREFIX}${name}.json"
+    local fullname="${name}.json"
     local pmcname="${name}.${iteration}"
 
     if [ -z "${PERSISTENT_WORKERS}" ]; then
@@ -166,7 +168,7 @@ while getopts ${OPTSTRING} opt; do
             QPS_ITERATIONS=${OPTARG}
             ;;
         f)
-            QPS_SCENARIO_SUFFIX="_msglimit"
+            QPS_SCENARIO_SUFFIX="_${OPTARG}"
             ;;
         g)
             QPS_SCENARIO_GROUP=${OPTARG}
@@ -184,6 +186,9 @@ while getopts ${OPTSTRING} opt; do
             if [ "${OPTARG}" != "base" ]; then
                 QPS_PACKAGE_FLAVOR="-${OPTARG}"
             fi
+            ;;
+        V)
+            export GRPC_VERBOSITY="DEBUG"
             ;;
         :)
             echo "Option -${OPTARG} requires an argument"
@@ -218,7 +223,7 @@ case "${QPS_PACKAGE_ABI}" in
         ;;
     hybrid)
         PREFIX=/usr/local64
-        PKG=/usr/local64/sbin/pkg
+        PKG=pkg64
         C18N_INTERP=
         RTLD_ENV_PREFIX=
         ;;
@@ -240,80 +245,59 @@ case "${QPS_PACKAGE_ABI}" in
 esac
 
 QPS_PACKAGE="grpc-qps${QPS_PACKAGE_FLAVOR}-1.54.2,2.pkg"
-# QPS_SCENARIOS="${PREFIX}/share/grpc-qps/scenarios"
-QPS_SCENARIOS="${CURDIR}/scenarios"
-QPS_RESULTS_DIR="/root/results/${QPS_EXPERIMENT}"
+QPS_SCENARIOS="${CURDIR}/scenarios/gen"
+QPS_RESULTS_DIR="/root/results/grpc-${QPS_PACKAGE_ABI}${QPS_PACKAGE_FLAVOR:=-base}/${QPS_EXPERIMENT}"
 
-QPS_SCENARIO_PREFIX=scenario_dump_cpp_
+QPS_SCENARIO_PREFIX=qps_
 
 case "${QPS_SCENARIO_GROUP}" in
     sync)
-        QPS_SCENARIO_LIST=(protobuf_sync_streaming_qps_unconstrained_insecure \
-            # protobuf_sync_streaming_qps_unconstrained_insecure_1073741824b \
-            # protobuf_sync_streaming_qps_unconstrained_insecure_134217728b \
-            # protobuf_sync_streaming_qps_unconstrained_insecure_16777216b \
-            # protobuf_sync_streaming_qps_unconstrained_insecure_2097152b \
-            protobuf_sync_streaming_qps_unconstrained_insecure_262144b \
-            protobuf_sync_streaming_qps_unconstrained_insecure_32768b \
-            protobuf_sync_streaming_qps_unconstrained_insecure_4096b \
-            protobuf_sync_streaming_qps_unconstrained_insecure_512b \
-            protobuf_sync_streaming_qps_unconstrained_insecure_64b \
-            protobuf_sync_streaming_qps_unconstrained_insecure_8b \
-            protobuf_sync_streaming_qps_unconstrained_insecure_1b)
+        QPS_SCENARIO_LIST=(sync_streaming_insecure_262144b \
+            sync_streaming_insecure_32768b \
+            sync_streaming_insecure_4096b \
+            sync_streaming_insecure_512b \
+            sync_streaming_insecure_64b \
+            sync_streaming_insecure_8b \
+            sync_streaming_insecure_1b)
         ;;
     sync_tls)
-        QPS_SCENARIO_LIST=(protobuf_sync_streaming_qps_unconstrained_secure \
-            # protobuf_sync_streaming_qps_unconstrained_secure_1073741824b \
-            # protobuf_sync_streaming_qps_unconstrained_secure_134217728b \
-            # protobuf_sync_streaming_qps_unconstrained_secure_16777216b \
-            # protobuf_sync_streaming_qps_unconstrained_secure_2097152b \
-            protobuf_sync_streaming_qps_unconstrained_secure_262144b \
-            protobuf_sync_streaming_qps_unconstrained_secure_32768b \
-            protobuf_sync_streaming_qps_unconstrained_secure_4096b \
-            protobuf_sync_streaming_qps_unconstrained_secure_512b \
-            protobuf_sync_streaming_qps_unconstrained_secure_64b \
-            protobuf_sync_streaming_qps_unconstrained_secure_8b \
-            protobuf_sync_streaming_qps_unconstrained_secure_1b)
+        QPS_SCENARIO_LIST=(sync_streaming_secure_262144b \
+            sync_streaming_secure_32768b \
+            sync_streaming_secure_4096b \
+            sync_streaming_secure_512b \
+            sync_streaming_secure_64b \
+            sync_streaming_secure_8b \
+            sync_streaming_secure_1b)
         ;;
     sync_pp)
-        QPS_SCENARIO_LIST=(protobuf_sync_streaming_ping_pong_insecure \
-            protobuf_sync_streaming_ping_pong_secure \
-            protobuf_sync_unary_ping_pong_insecure \
-            protobuf_sync_unary_ping_pong_secure)
+        QPS_SCENARIO_LIST=(sync_streaming_ping_pong_insecure \
+            sync_streaming_ping_pong_secure \
+            sync_unary_ping_pong_insecure \
+            sync_unary_ping_pong_secure)
         ;;
     async)
-        QPS_SCENARIO_LIST=(protobuf_async_streaming_qps_unconstrained_insecure \
-            # protobuf_async_streaming_qps_unconstrained_insecure_1073741824b \
-            # protobuf_async_streaming_qps_unconstrained_insecure_134217728b \
-            # protobuf_async_streaming_qps_unconstrained_insecure_16777216b \
-            # protobuf_async_streaming_qps_unconstrained_insecure_2097152b \
-            protobuf_async_streaming_qps_unconstrained_insecure_262144b \
-            protobuf_async_streaming_qps_unconstrained_insecure_32768b \
-            protobuf_async_streaming_qps_unconstrained_insecure_4096b \
-            protobuf_async_streaming_qps_unconstrained_insecure_512b \
-            protobuf_async_streaming_qps_unconstrained_insecure_64b \
-            protobuf_async_streaming_qps_unconstrained_insecure_8b \
-            protobuf_async_streaming_qps_unconstrained_insecure_1b)
+        QPS_SCENARIO_LIST=(async_streaming_insecure_262144b \
+            async_streaming_insecure_32768b \
+            async_streaming_insecure_4096b \
+            async_streaming_insecure_512b \
+            async_streaming_insecure_64b \
+            async_streaming_insecure_8b \
+            async_streaming_insecure_1b)
         ;;
     async_tls)
-        QPS_SCENARIO_LIST=(protobuf_async_streaming_qps_unconstrained_secure \
-            # protobuf_async_streaming_qps_unconstrained_secure_1073741824b \
-            # protobuf_async_streaming_qps_unconstrained_secure_134217728b \
-            # protobuf_async_streaming_qps_unconstrained_secure_16777216b \
-            # protobuf_async_streaming_qps_unconstrained_secure_2097152b \
-            protobuf_async_streaming_qps_unconstrained_secure_262144b \
-            protobuf_async_streaming_qps_unconstrained_secure_32768b \
-            protobuf_async_streaming_qps_unconstrained_secure_4096b \
-            protobuf_async_streaming_qps_unconstrained_secure_512b \
-            protobuf_async_streaming_qps_unconstrained_secure_64b \
-            protobuf_async_streaming_qps_unconstrained_secure_8b \
-            protobuf_async_streaming_qps_unconstrained_secure_1b)
+        QPS_SCENARIO_LIST=(async_streaming_secure_262144b \
+            async_streaming_secure_32768b \
+            async_streaming_secure_4096b \
+            async_streaming_secure_512b \
+            async_streaming_secure_64b \
+            async_streaming_secure_8b \
+            async_streaming_secure_1b)
         ;;
     async_pp)
-        QPS_SCENARIO_LIST=(protobuf_async_streaming_ping_pong_insecure \
-            protobuf_async_streaming_ping_pong_secure \
-            protobuf_async_unary_ping_pong_insecure \
-            protobuf_async_unary_ping_pong_secure)
+        QPS_SCENARIO_LIST=(async_streaming_ping_pong_insecure \
+            async_streaming_ping_pong_secure \
+            async_unary_ping_pong_insecure \
+            async_unary_ping_pong_secure)
         ;;
     *)
         echo "Invalid scenario group selection"
@@ -321,7 +305,7 @@ case "${QPS_SCENARIO_GROUP}" in
 esac
 
 for idx in ${!QPS_SCENARIO_LIST[@]}; do
-    QPS_SCENARIO_LIST[idx]="${QPS_SCENARIO_LIST[idx]}${QPS_SCENARIO_SUFFIX}"
+    QPS_SCENARIO_LIST[idx]="${QPS_SCENARIO_PREFIX}${QPS_SCENARIO_LIST[idx]}${QPS_SCENARIO_SUFFIX}"
 done
 
 if [ "$default_revoke" == "1" ]; then
@@ -330,12 +314,17 @@ if [ "$default_revoke" == "1" ]; then
 fi
 
 echo "=== Setup grpc-qps packages ==="
-${X} env ASSUME_ALWAYS_YES=yes ${PKG} add /packages/All/${QPS_PACKAGE}
+if [ "${QPS_PACKAGE_ABI}" == "hybrid" ]; then
+    PKGDIR="/packages64"
+else
+    PKGDIR="/packages"
+fi
+${X} env ASSUME_ALWAYS_YES=yes ${PKG} add ${PKGDIR}/All/${QPS_PACKAGE}
 
 case "${QPS_EXPERIMENT}" in
     base)
         ;;
-    c18n|c18n_policy)
+    c18n|c18n_policy|c18n_ipc)
         if [ -z "${C18N_INTERP}" ]; then
            echo "ERROR: can not use -r c18n with -a hybrid"
            exit 1
@@ -354,7 +343,7 @@ case "${QPS_EXPERIMENT}" in
         ${X} elfctl -e +cherirevoke "${PREFIX}/bin/grpc_qps_worker"
         ;;
     *)
-        echo "ERROR: invalid -r option, must be {base, c18n, revoke}"
+        echo "ERROR: invalid -r option, must be one of {base, c18n, c18n_policy, c18n_ipc, revoke}"
         exit 1
 esac
 
