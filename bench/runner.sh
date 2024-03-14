@@ -18,8 +18,7 @@ POUDRIERE_CLEAN=
 
 ABIS=(hybrid purecap benchmark)
 VARIANTS=(base stackzero subobj)
-#RUNTIMES=(base c18n c18n_policy revoke)
-RUNTIMES=(base c18n c18n_policy c18n_ipc)
+RUNTIMES=(base c18n c18n_policy c18n_ipc revoke)
 ITERATIONS=
 SCENARIO_GROUP=
 FIXED_WORKLOAD=
@@ -224,13 +223,16 @@ function hwpmc_counters()
 
     case ${group} in
         inst)
-            echo "INST_RETIRED,CPU_CYCLES"
+            echo "CPU_CYCLES,INST_RETIRED,INST_SPEC,EXECUTIVE_ENTRY,EXECUTIVE_EXIT,INST_SPEC_RESTRICTED"
             ;;
-        cache)
-            echo "CPU_CYCLES,INST_RETIRED,BUS_ACCESS,L1D_CACHE_REFILL,L1D_CACHE,L1D_CACHE_WB_VICTIM,L2D_CACHE_REFILL,L2D_CACHE,L2D_CACHE_WB_VICTIM"
+        l1cache)
+            echo "CPU_CYCLES,INST_RETIRED,L1D_CACHE_REFILL,L1D_CACHE,L1D_CACHE_WB_VICTIM,L1I_CACHE,L1I_TLB_REFILL,L1I_CACHE_REFILL,L1D_TLB_REFILL"
             ;;
-        spec)
-            echo "CPU_CYCLES,INST_RETIRED,INST_SPEC,BR_MIS_PRED_RS,EXECUTIVE_ENTRY,EXECUTIVE_EXIT,INST_SPEC_RESTRICTED"
+        l2cache)
+            echo "CPU_CYCLES,INST_RETIRED,L2D_CACHE_REFILL,L2D_CACHE,L2D_CACHE_WB_VICTIM,BUS_ACCESS"
+            ;;
+        branch)
+            echo "CPU_CYCLES,INST_RETIRED,BR_MIS_PRED,BR_PRED,BR_MIS_PRED_RS,BR_RETIRED,BR_MIS_PRED_RETIRED,BR_RETURN_SPEC"
             ;;
         *)
             # Override hwpmc counter group, use ${group}
@@ -568,11 +570,6 @@ function run_benchmark()
             done
         done
     done
-
-    if [ "${OUTPUT_DIR}" != "results" ]; then
-        ${X} mv ${WORKSPACE}/results "${WORKSPACE}/${OUTPUT_DIR}"
-        ${X} tar -Jcf "${WORKSPACE}/${OUTPUT_DIR}.tar.xz" "${WORKSPACE}/${OUTPUT_DIR}"
-    fi
 }
 
 if [ "$STEP" == "setup" ]; then
