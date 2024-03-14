@@ -299,6 +299,12 @@ case "${QPS_SCENARIO_GROUP}" in
             async_unary_ping_pong_insecure \
             async_unary_ping_pong_secure)
         ;;
+    async_dasa)
+        QPS_SCENARIO_LIST=(async_streaming_insecure_8b \
+            async_streaming_insecure_64b \
+            async_streaming_secure_8b \
+            async_streaming_secure_64b)
+        ;;
     *)
         echo "Invalid scenario group selection"
         exit 1
