@@ -86,7 +86,7 @@ function start_nginx()
 {
     envcmd=""
 
-    if [ "${NGINX_EXPERIMENT}" == "c18n_ipc" ];
+    if [ "${NGINX_EXPERIMENT}" == "c18n_ipc" ]; then
        envcmd="env ${RTLD_ENV_PREFIX}COMPARTMENT_OVERHEAD=1"
     fi
 
@@ -222,14 +222,14 @@ case "${NGINX_PACKAGE_ABI}" in
         PREFIX=/usr/local
         PKG=pkg64c
         NGINX_CONF=/root/nginx/nginx.conf
-        C18N_INTERP=/libexec/ld-elf-c18n.so.1
+        C18N_INTERP=ld-elf-c18n.so.1
         RTLD_ENV_PREFIX="LD_"
         ;;
     benchmark)
         PREFIX=/usr/local64cb
         PKG=pkg64cb
         NGINX_CONF=/root/nginx/nginx64cb.conf
-        C18N_INTERP=/libexec/ld-elf64cb-c18n.so.1
+        C18N_INTERP=ld-elf64cb-c18n.so.1
         RTLD_ENV_PREFIX="LD_64CB_"
         ;;
     *)
@@ -268,13 +268,21 @@ NGINX_BINARY="${PREFIX}/sbin/nginx"
 case "${NGINX_EXPERIMENT}" in
     base)
         ;;
-    c18n|c18n_ipc)
+    c18n)
         if [ -z "${C18N_INTERP}" ]; then
            echo "ERROR: can not use -r c18n with -a hybrid"
            exit 1
         fi
         echo "Patch nginx to enable c18n"
-        ${X} patchelf --set-interpreter "${C18N_INTERP}" "${NGINX_BINARY}"
+        ${X} patchelf --set-interpreter "/libexec/${C18N_INTERP}" "${NGINX_BINARY}"
+        ;;
+    c18n_ipc)
+        if [ -z "${C18N_INTERP}" ]; then
+            echo "ERROR: can not use -r c18n with -a hybrid"
+            exit 1
+        fi
+        echo "Patch nginx to enable c18n with overhead simulation"
+        ${X} patchelf --set-interpreter "/libexec/overhead-${C18N_INTERP}" "${NGINX_BINARY}"
         ;;
     revoke)
         echo "Patch nginx to enable revocation"
