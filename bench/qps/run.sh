@@ -380,7 +380,7 @@ W1_PORT=20001
 ${X} pkill grpc_qps_worker || true
 
 if [ ! -z "${PERSISTENT_WORKERS}" ]; then
-    start_workers
+    start_workers "all"
 fi
 
 echo "=== Begin benchmark loop ==="
