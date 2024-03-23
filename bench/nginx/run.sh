@@ -13,6 +13,7 @@ NGINX_PACKAGE_FLAVOR=
 NGINX_EXPERIMENT=base
 NGINX_ITERATIONS=10
 NGINX_PIDFILE="/var/run/nginx.pid"
+NGINX_SCENARIO_GROUP=random
 
 RTLD_ENV_PREFIX=
 C18N_INTERP=
@@ -22,7 +23,7 @@ HWPMC_SAMPLING=
 HWPMC_COUNTING=
 HWPMC_COMMAND=
 
-OPTSTRING="na:r:i:dv:fj:J:V"
+OPTSTRING="na:r:g:i:dv:fj:J:V"
 X=
 
 function usage()
@@ -32,6 +33,7 @@ function usage()
     echo -e "\t-a\tABI of the nginx server to run, this must match the package abi"
     echo -e "\t-d\tDo not respawn nginx for each iteration"
     echo -e "\t-f\tUse fixed message limit"
+    echo -e "\t-g\tBenchmark group, one of random,dasa"
     echo -e "\t-h\tShow help message"
     echo -e "\t-i\tIterations, default 10"
     echo -e "\t-j\tEnable hwpmc profiling in sampling mode at the given rate"
@@ -174,6 +176,9 @@ while getopts ${OPTSTRING} opt; do
         f)
             WRK_MSGLIMIT=1
             ;;
+        g)
+            NGINX_SCENARIO_GROUP=${OPTARG}
+            ;;
         i)
             NGINX_ITERATIONS=${OPTARG}
             ;;
@@ -239,7 +244,19 @@ esac
 
 NGINX_PACKAGE="nginx${NGINX_PACKAGE_FLAVOR}-1.24.0_11,3.pkg"
 NGINX_RESULTS_DIR="/root/results/grpc-${NGINX_PACKAGE_ABI}${NGINX_PACKAGE_FLAVOR:=-base}/${NGINX_EXPERIMENT}"
-NGINX_SCENARIO_LIST=(random_0b random_512b random_1024b random_10240b random_102400b)
+
+case "${NGINX_SCENARIO_GROUP}" in
+    random)
+        NGINX_SCENARIO_LIST=(random_0b random_512b random_1024b random_10240b random_102400b)
+        ;;
+    dasa)
+        NGINX_SCENARIO_LIST=(random_1024b)
+        ;;
+    *)
+        echo "Invalid scenario group selection"
+        exit 1
+esac
+
 
 echo "NGINX_PACKAGE:      ${NGINX_PACKAGE}"
 echo "NGINX_ITERATIONS:   ${NGINX_ITERATIONS}"
