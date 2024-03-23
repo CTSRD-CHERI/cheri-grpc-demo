@@ -46,7 +46,7 @@ function usage()
     echo -e "\t-h\tShow help message"
     echo -e "\t-i\tBenchmark iterations to run (default see qps/run.sh)"
     echo -e "\t-j\tEnable hwpmc profiling in sampling mode every <arg> instructions"
-    echo -e "\t-J\tEnable hwpmc counters in the given group (inst, cheri)"
+    echo -e "\t-J\tEnable hwpmc counters in the given group (inst, l1cache, l2cache, branch)"
     echo -e "\t-n\tPretend run, print the commands without doing anything"
     echo -e "\t-o\tName of the result directory, defaults to results"
     echo -e "\t-p\tPorts tree name, default ${PORTS_NAME}"
