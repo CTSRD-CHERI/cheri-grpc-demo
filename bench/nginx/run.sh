@@ -84,26 +84,56 @@ function gen_ssl()
          -signkey "${NGINX_ETC}/server.key" -out "${NGINX_ETC}/server.crt"
 }
 
+# $1 => unique name for this iteration within the results dir, used for pmcstat files
 function start_nginx()
 {
-    envcmd=""
+    local pmcname="${1}"
+    local hwpmc_cmd="${HWPMC_COMMAND}"
+    local envcmd=""
 
     if [ "${NGINX_EXPERIMENT}" == "c18n_ipc" ]; then
        envcmd="env ${RTLD_ENV_PREFIX}COMPARTMENT_OVERHEAD=1"
     fi
 
-    ${X} ${envcmd} ${NGINX_BINARY}
-    if [ -z "${X}" ]; then
-        if [ ! -f "${NGINX_PIDFILE}" ]; then
-            echo "Failed to start nginx"
-            exit 1
+    if [ -n "${HWPMC_SAMPLING}" ]; then
+        hwpmc_cmd+=" -O ${NGINX_RESULTS_DIR}/${pmcname}.pmc.stat"
+    fi
+    if [ -n "${HWPMC_COUNTING}" ]; then
+        hwpmc_cmd+=" -o ${NGINX_RESULTS_DIR}/${pmcname}.pmc.txt"
+    fi
+
+    if [ -n "${HWPMC_COMMAND}" ]; then
+        ${X} ${envcmd} ${hwpmc_cmd} ${NGINX_BINARY} &
+        HWPMC_PID=$!
+        if [ -n "${X}" ]; then
+            HWPMC_PID="<HWPMC_PID>"
         fi
+    else
+        ${X} ${envcmd} ${NGINX_BINARY}
+    fi
+
+    if [ -z "${X}" ]; then
+        local count=5
+        while : ; do
+            if [ $count -le 0 ]; then
+                echo "Failed to start nginx"
+                exit 1
+            fi
+            if [ -f "${NGINX_PIDFILE}" ]; then
+                break
+            else
+                sleep 1
+                count=$((count - 1))
+            fi
+        done
         echo "Nginx started at $(cat ${NGINX_PIDFILE})"
     fi
 }
 
+# $1 => unique name for this iteration within the results dir, used for pmcstat files
 function stop_nginx()
 {
+    local pmcname="${1}"
     local nginx_pid
 
     # ${X} service nginx onestop
@@ -118,7 +148,20 @@ function stop_nginx()
     fi
 
     ${X} kill -QUIT "${nginx_pid}"
+
+    if [ -n "${HWPMC_COMMAND}" ]; then
+        ${X} pwait ${HWPMC_PID}
+    fi
+
     ${X} pwait "${nginx_pid}"
+
+    if [ -n "${HWPMC_SAMPLING}" ]; then
+        # Dump the pmcstats to the correct file
+        # Should we do this after everything to limit noise between iterations?
+        ${X} pmcstat -R "${NGINX_RESULTS_DIR}/${pmcname}.pmc.stat" -G \
+             "${NGINX_RESULTS_DIR}/${pmcname}.pmc.stacks"
+        ${X} rm "${NGINX_RESULTS_DIR}/${pmcname}.pmc.stat"
+    fi
 }
 
 # $1 => iteration number
@@ -129,9 +172,10 @@ function run_wrk_one()
     local name=${2}
     local fullname="${name}"
     local wrk_args=""
+    local pmcname="${name}.${iteration}"
 
     if [ -z "${PERSISTENT_WORKERS}" ]; then
-        start_nginx
+        start_nginx ${pmcname}
     fi
     if [ -n "${WRK_MSGLIMIT}" ]; then
         wrk_args="-s ${CURDIR}/wrk-msglimit-report.lua"
@@ -144,7 +188,7 @@ function run_wrk_one()
     ${X} mv wrk-result.json "${NGINX_RESULTS_DIR}/result_${name}.${iteration}.json"
 
     if [ -z "${PERSISTENT_WORKERS}" ]; then
-        stop_nginx
+        stop_nginx ${pmcname}
     fi
 }
 
@@ -208,6 +252,19 @@ while getopts ${OPTSTRING} opt; do
         ;;
     esac
 done
+
+if [ -n "${HWPMC_SAMPLING}" ] || [ -n "${HWPMC_COUNTING}" ]; then
+    pmc_args=""
+    if [ -n "${HWPMC_SAMPLING}" ]; then
+        pmc_args+=" -P INST_RETIRED -n ${HWPMC_SAMPLING}"
+    fi
+    if [ -n "${HWPMC_COUNTING}" ]; then
+        for pmc in `echo ${HWPMC_COUNTING} | tr "," "\n"`; do
+            pmc_args+=" -p ${pmc}"
+        done
+    fi
+    HWPMC_COMMAND="pmcstat -d ${pmc_args}"
+fi
 
 echo "=== nginx run configuration ==="
 
@@ -326,7 +383,7 @@ ${X} cp "${NGINX_ETC}/mime.types-dist" "${NGINX_ETC}/mime.types"
 gen_ssl
 
 if [ ! -z "${PERSISTENT_WORKERS}" ]; then
-    start_nginx
+    start_nginx "all"
 fi
 
 echo "=== Begin benchmark loop ==="
